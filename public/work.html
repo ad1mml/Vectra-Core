@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VectraCore - Terminal Workspace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0e11;
+            --panel-bg: #151a22;
+            --border-color: #2a323f;
+            --accent-color: #ff3b30;
+            --accent-hover: #e02d25;
+            --text-main: #f0f3f6;
+            --text-muted: #848e9c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 24px;
+            height: 60px;
+        }
+
+        .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text-main); }
+        .logo-mark { width: 26px; height: 26px; flex-shrink: 0; }
+        .logo h1 { font-size: 1.3rem; letter-spacing: 2px; font-weight: 700; }
+        .logo h1 span { color: var(--accent-color); }
+
+        .header-actions { display: flex; align-items: center; gap: 20px; }
+
+        .feedback-btn {
+            background-color: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .feedback-btn:hover {
+            color: var(--text-main);
+            border-color: var(--text-muted);
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .user-badge {
+            color: var(--text-main);
+            font-size: 0.85rem;
+            background: rgba(255, 59, 48, 0.1);
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 59, 48, 0.2);
+        }
+
+        .workspace-container { display: flex; flex: 1; overflow: hidden; }
+
+        .ai-inputs-panel {
+            flex: 4;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow-y: auto;
+        }
+
+        .ai-output-panel {
+            flex: 6;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            background-color: var(--bg-color);
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-left: 3px solid var(--accent-color);
+            padding-left: 10px;
+        }
+
+        .form-group { margin-bottom: 25px; }
+
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .file-dropzone {
+            position: relative;
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .file-dropzone:hover { border-color: var(--accent-color); }
+
+        .file-dropzone input[type="file"] {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .dropzone-text { font-size: 0.85rem; color: var(--text-muted); }
+
+        textarea {
+            width: 100%;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-main);
+            padding: 14px;
+            font-size: 0.95rem;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus { border-color: var(--accent-color); }
+
+        .action-btn {
+            width: 100%;
+            background-color: var(--accent-color);
+            color: #fff;
+            border: none;
+            padding: 16px;
+            border-radius: 6px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .action-btn:hover { background-color: var(--accent-hover); }
+
+        .action-btn:disabled {
+            background-color: var(--border-color);
+            cursor: not-allowed;
+            color: var(--text-muted);
+        }
+
+        .loader-wrap { display: none; text-align: center; margin: 20px 0; }
+
+        .ring-spinner {
+            border: 3px solid rgba(255,255,255,0.1);
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            border-left-color: var(--accent-color);
+            animation: rotate-loading 1s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes rotate-loading {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .response-viewport { flex: 1; padding: 30px; }
+
+        .report-card {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .report-card h3 {
+            font-size: 0.9rem;
+            color: var(--accent-color);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .report-card p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #e0e6ed;
+            white-space: pre-line;
+        }
+
+        .snapshot-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px 24px;
+        }
+
+        .snapshot-grid .label {
+            display: block;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 3px;
+        }
+
+        .snapshot-grid .value {
+            font-size: 0.95rem;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .field-row {
+            margin-bottom: 14px;
+        }
+
+        .field-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .field-row .label {
+            display: block;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .field-row .value {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #e0e6ed;
+            white-space: pre-line;
+        }
+
+        .decision-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+
+        .probability-value {
+            font-size: 0.85rem;
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        .disclaimer-line {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 14px;
+            line-height: 1.5;
+        }
+
+        .chat-narrative-bubble {
+            background-color: rgba(255, 59, 48, 0.04);
+            border: 1px solid rgba(255, 59, 48, 0.15);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .chat-narrative-bubble h3 { font-size: 1rem; color: var(--accent-color); margin-bottom: 12px; }
+
+        .chat-narrative-bubble p {
+            font-size: 0.92rem;
+            line-height: 1.6;
+            color: #f0f3f6;
+            white-space: pre-wrap;
+        }
+
+        .error-bubble {
+            background-color: rgba(255, 59, 48, 0.08);
+            border: 1px solid var(--accent-color);
+            border-radius: 8px;
+            padding: 20px;
+            color: #ffb4af;
+            font-size: 0.9rem;
+        }
+
+        .upgrade-bubble {
+            background: linear-gradient(160deg, rgba(255, 59, 48, 0.10), rgba(255, 59, 48, 0.03));
+            border: 1px solid var(--accent-color);
+            border-radius: 14px;
+            padding: 26px 24px;
+            text-align: center;
+            box-shadow: 0 8px 28px rgba(255, 59, 48, 0.12);
+        }
+
+        .upgrade-bubble .upgrade-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin-bottom: 10px;
+            letter-spacing: 0.2px;
+        }
+
+        .upgrade-bubble p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #f0f3f6;
+            margin-bottom: 18px;
+        }
+
+        /* Segmented countdown clock */
+        .upgrade-countdown-wrap {
+            margin: 0 auto 20px;
+        }
+
+        .upgrade-countdown-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .upgrade-countdown-clock {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .upgrade-countdown-clock .cd-segment {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-width: 52px;
+        }
+
+        .upgrade-countdown-clock .cd-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-main, #f0f3f6);
+            line-height: 1;
+        }
+
+        .upgrade-countdown-clock .cd-unit {
+            font-size: 0.62rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .upgrade-countdown-clock .cd-colon {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-top: -14px;
+        }
+
+        .upgrade-countdown-clock.cd-done .cd-segment {
+            border-color: rgba(80, 200, 120, 0.5);
+        }
+
+        .upgrade-countdown-clock.cd-done .cd-value {
+            color: #6be08a;
+        }
+
+        .upgrade-plan-line {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #f0f3f6;
+            background-color: rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 18px;
+        }
+
+        .upgrade-cta-btn {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: #fff;
+            text-decoration: none;
+            font-size: 0.88rem;
+            font-weight: 700;
+            padding: 11px 22px;
+            border-radius: 6px;
+            transition: background-color 0.2s, transform 0.15s;
+        }
+
+        .upgrade-cta-btn:hover {
+            background-color: var(--accent-hover, #e02d25);
+            transform: translateY(-1px);
+        }
+
+        .history-section {
+            padding: 30px;
+            border-top: 1px solid var(--border-color);
+            background-color: var(--panel-bg);
+        }
+
+        .run-history-element {
+            padding: 12px;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .run-history-element:hover { background-color: rgba(255, 59, 48, 0.05); }
+
+        .history-topline {
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .history-question {
+            color: #fff;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .feedback-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(11, 14, 17, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .feedback-content {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            width: 90%;
+            max-width: 450px;
+            padding: 30px;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            animation: modalSlide 0.25s ease-out;
+        }
+
+        @keyframes modalSlide {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .close-feedback {
+            position: absolute;
+            top: 15px; right: 20px;
+            background: none; border: none;
+            color: var(--text-muted);
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .close-feedback:hover { color: var(--text-main); }
+
+        .feedback-content h3 { font-size: 1.4rem; margin-bottom: 8px; }
+        .feedback-content h3 span { color: var(--accent-color); }
+
+        .feedback-content p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .feedback-form { display: flex; flex-direction: column; gap: 12px; }
+
+        .feedback-input {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .feedback-input:focus { border-color: var(--accent-color); }
+        textarea.feedback-input { resize: none; height: 120px; }
+
+        .submit-feedback-btn {
+            background-color: var(--accent-color);
+            color: #fff;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .navbar-plan-badge{
+    padding:8px 16px;
+    border-radius:999px;
+    font-weight:700;
+    font-size:14px;
+    color:white;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    position:relative;
+    overflow:visible;
+    transition: background 0.3s ease;
+}
+
+.navbar-plan-badge .badge-label{
+    position:relative;
+    z-index:2;
+    white-space:nowrap;
+}
+
+/* ---------- DEFAULT: cute, calm, no motion ---------- */
+.navbar-plan-badge.plan-default{
+    background: linear-gradient(135deg, #c7d2fe, #a5b4fc 55%, #93c5fd);
+    color:#1e2a4a;
+    box-shadow: 0 2px 10px rgba(147,197,253,0.45), inset 0 1px 0 rgba(255,255,255,0.5);
+    border:1px solid rgba(255,255,255,0.35);
+}
+
+/* ---------- PRO: little leaves swaying inside ---------- */
+.navbar-plan-badge.plan-pro{
+    background: linear-gradient(135deg, #0f3d21, #16a34a 55%, #4ade80);
+    box-shadow: 0 2px 12px rgba(22,163,74,0.35);
+}
+
+.navbar-plan-badge.plan-pro .pro-leaf{
+    position:absolute;
+    font-size:13px;
+    line-height:1;
+    z-index:1;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.25));
+    transform-origin: bottom center;
+    animation: pro-sway 2.6s ease-in-out infinite;
+}
+
+.navbar-plan-badge.plan-pro .pro-leaf-1{ top:-6px; left:8px; animation-delay:0s; }
+.navbar-plan-badge.plan-pro .pro-leaf-2{ top:-7px; right:10px; font-size:15px; animation-delay:0.7s; }
+.navbar-plan-badge.plan-pro .pro-leaf-3{ bottom:-6px; left:50%; font-size:11px; animation-delay:1.3s; }
+
+@keyframes pro-sway{
+    0%,100% { transform: rotate(-10deg) translateY(0); }
+    50%     { transform: rotate(12deg) translateY(-1px); }
+}
+
+/* ---------- VIP: glowing gold + drifting sparkles ---------- */
+.navbar-plan-badge.plan-vip{
+    background: linear-gradient(135deg, #3b0764, #6d28d9 45%, #b8860b 85%, #d4af37);
+    animation: vip-glow-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes vip-glow-pulse{
+    0%,100% { box-shadow: 0 0 10px 2px rgba(212,175,55,0.45), 0 0 20px 4px rgba(124,58,237,0.30); }
+    50%     { box-shadow: 0 0 20px 6px rgba(212,175,55,0.85), 0 0 36px 10px rgba(124,58,237,0.55); }
+}
+
+.navbar-plan-badge.plan-vip .vip-spark{
+    position:absolute;
+    bottom:2px;
+    width:4px;
+    height:4px;
+    border-radius:50%;
+    background:#ffe066;
+    box-shadow: 0 0 6px 2px rgba(255,215,0,0.9);
+    opacity:0;
+    z-index:1;
+    animation: vip-float 3s ease-in infinite;
+}
+
+@keyframes vip-float{
+    0%   { transform: translateY(0) scale(0.5); opacity:0; }
+    15%  { opacity:1; }
+    85%  { opacity:0.8; }
+    100% { transform: translateY(-26px) scale(1.1); opacity:0; }
+}
+
+.upgrade-btn{
+    padding:8px 16px;
+    border-radius:10px;
+    text-decoration:none;
+    color:white;
+    border:1px solid #ff4040;
+    transition:0.25s;
+}
+
+.upgrade-btn:hover{
+    background:#ff4040;
+}
+
+        .submit-feedback-btn:hover { background-color: var(--accent-hover); }
+        .submit-feedback-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <a class="logo" href="index.html">
+            <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><line x1="14" y1="61" x2="82" y2="61" stroke="#ff3b30" stroke-width="3" stroke-dasharray="4 5" opacity="0.55"/><path d="M22,45 L44,84 L86,32" fill="none" stroke="#f0f3f6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M44,61 L44,84 L86,32" fill="none" stroke="#ff3b30" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44" cy="84" r="9" fill="#ff3b30"/></svg>
+            <h1>Vectra <span>Core</span></h1>
+        </a>
+        <div class="header-actions">
+            <button class="feedback-btn" id="open-feedback-btn">Send Feedback</button>
+            <div id="navbar-plan-badge" class="navbar-plan-badge plan-default"><span class="badge-label">✨ DEFAULT</span></div>
+
+            <a href="pricing.html" class="upgrade-btn">⬆ Upgrade Plan</a>
+            <div class="user-badge" id="current-user">guest@vectracore.ai</div>
+        </div>
+    </header>
+
+    <div class="workspace-container">
+
+        <div class="ai-inputs-panel">
+            <div>
+                <div class="panel-title"> VectraCore Terminal Inputs</div>
+
+                <form id="assistant-form">
+                    <div class="form-group">
+                        <label>Upload Chart State (Optional)</label>
+                        <div class="file-dropzone">
+                            <span class="dropzone-text" id="file-title">Choose File / Drag & Drop Image Here</span>
+                            <input type="file" id="user-uploaded-image" accept="image/*">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>AI Query / Prompt Focus</label>
+                        <textarea id="prompt-textbox" rows="6" placeholder="Identify SMC Fair Value Gaps, sweep targets, or current macroeconomic narrative drivers..."></textarea>
+                    </div>
+
+                    <button type="submit" class="action-btn" id="trigger-btn">Run Analysis</button>
+                </form>
+
+                <div class="loader-wrap" id="running-loader">
+                    <div class="ring-spinner"></div>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 8px;">VectraCore Analyzing Liquidity Matrix...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="ai-output-panel">
+            <div class="response-viewport" id="ai-response-viewport">
+                <div style="text-align: center; color: var(--text-muted); margin-top: 80px; font-size: 0.9rem; padding: 30px;">
+                    Enter an analytical directive or upload a screenshot. VectraCore deep learning engine will render structural, technical, and macro results inside this space.
+                </div>
+            </div>
+
+            <div class="history-section">
+                <div class="panel-title" style="margin-bottom: 10px;">Saved Analysis History</div>
+                <div id="history-container">
+                    <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 10px 0;">Loading history...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="feedback-overlay" id="feedback-modal">
+        <div class="feedback-content">
+            <button class="close-feedback" id="close-feedback-btn">&times;</button>
+            <h3>Submit <span>Feedback</span></h3>
+            <p>Tell us what features you want or issues you've encountered. We read every submission!</p>
+
+            <form class="feedback-form" id="actual-feedback-form">
+                <input type="text" id="fb-honey" style="display:none">
+
+                <input type="email" id="feedback-sender-email" class="feedback-input" placeholder="Your Email Address" required>
+
+                <textarea id="feedback-message" class="feedback-input" placeholder="Describe your experience, report a bug, or suggest a tool..." required></textarea>
+
+                <button type="submit" class="submit-feedback-btn" id="submit-fb-btn">Submit Feedback</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Same-origin when this page is served by the Flask backend itself;
+        // falls back to localhost:5000 for local file:// testing.
+        const API_BASE_URL = window.location.protocol.startsWith('http')
+            ? window.location.origin
+            : 'http://127.0.0.1:5000';
+
+        const activeProfile = localStorage.getItem('vectracore_user_email') || 'guest@vectracore.ai';
+        document.getElementById('current-user').textContent = activeProfile;
+        document.getElementById('feedback-sender-email').value =
+            activeProfile === 'guest@vectracore.ai' ? '' : activeProfile;
+
+        const imageFileField = document.getElementById('user-uploaded-image');
+        const fileLabelText = document.getElementById('file-title');
+
+        imageFileField.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) {
+                fileLabelText.textContent = this.files[0].name;
+                fileLabelText.style.color = 'var(--accent-color)';
+            } else {
+                fileLabelText.textContent = "Choose File / Drag & Drop Image Here";
+                fileLabelText.style.color = 'var(--text-muted)';
+            }
+        });
+
+        const submissionForm = document.getElementById('assistant-form');
+        submissionForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const promptValue = document.getElementById('prompt-textbox').value.trim();
+            const uploadedImage = imageFileField.files[0];
+
+            if (!promptValue && !uploadedImage) {
+                alert("Please provide a prompt instruction or drag/drop an image to run analytics.");
+                return;
+            }
+
+            document.getElementById('running-loader').style.display = 'block';
+            document.getElementById('trigger-btn').disabled = true;
+
+            const packet = new FormData();
+            packet.append('user_email', activeProfile);
+            packet.append('question', promptValue);
+            packet.append('plan',localStorage.getItem('vectracore_plan') || 'default');
+            if (uploadedImage) {
+                packet.append('chart', uploadedImage);
+            }
+            /* PUT THE NEW CODE EXACTLY HERE */
+            console.log("ABOUT TO SEND REQUEST");
+            console.log("URL:", `${API_BASE_URL}/analyze-chart`);
+            console.log("FORM DATA:", [...packet.entries()]);
+            try {
+                const response = await fetch(`${API_BASE_URL}/analyze-chart`, {
+                    method: 'POST',
+                    body: packet
+                });
+
+                const text = await response.text();
+
+                console.log("RAW RESPONSE:");
+                console.log(text);
+
+                let result = {};
+
+                try {
+                    result = JSON.parse(text);
+                } catch (err) {
+                    console.error("JSON PARSE ERROR:", err);
+                    throw new Error("Server returned invalid JSON");
+                }
+
+                console.log("PARSED RESPONSE:", result);
+
+                if (!response.ok) {
+                    if (result.upgrade_required) {
+                        renderUpgradeAlert(result);
+                        await loadHistory();
+                        submissionForm.reset();
+                        fileLabelText.textContent = "Choose File / Drag & Drop Image Here";
+                        fileLabelText.style.color = 'var(--text-muted)';
+                        return;
+                    }
+                    throw new Error(result.error || `Server responded with status code: ${response.status}`);
+                }
+
+                renderAIResponse(result);
+                await loadHistory();
+
+                // Reset the form for the next query
+                submissionForm.reset();
+                fileLabelText.textContent = "Choose File / Drag & Drop Image Here";
+                fileLabelText.style.color = 'var(--text-muted)';
+
+            } catch (err) {
+                console.error("FETCH ERROR:", err);
+                renderError(err.message);
+            } finally {
+                document.getElementById('running-loader').style.display = 'none';
+                document.getElementById('trigger-btn').disabled = false;
+            }
+        });
+
+        function renderAIResponse(data) {
+            console.log("RENDER FUNCTION RECEIVED:", data);
+
+            if (data.upgrade_required) {
+                renderUpgradeAlert(data);
+                return;
+            }
+
+            const viewport = document.getElementById('ai-response-viewport');
+            if (data.answer) {
+                viewport.innerHTML = `
+                    <div class="chat-narrative-bubble">
+                        <h3>VectraCore Response</h3>
+                        <p id="chat-answer"></p>
+                    </div>
+                `;
+
+                document.getElementById('chat-answer').textContent = data.answer;
+                return;
+            }
+              
+
+
+            if (data.fundamental_analysis === "TEXT_ONLY_MODE") {
+                
+                viewport.innerHTML = `
+                    <div class="chat-narrative-bubble">
+                        <h3>VectraCore Analytical Brief</h3>
+                        <p></p>
+                    </div>
+                `;
+                viewport.querySelector('p').textContent = data.technical_analysis || '';
+                return;
+            }
+
+            viewport.innerHTML = `
+                <div class="report-card">
+                    <div class="snapshot-grid">
+                        <div><span class="label">Symbol</span><span class="value" id="rc-symbol"></span></div>
+                        <div><span class="label">Timeframe</span><span class="value" id="rc-timeframe"></span></div>
+                        <div><span class="label">Chart Type</span><span class="value" id="rc-charttype"></span></div>
+                        <div><span class="label">Market Structure</span><span class="value" id="rc-structure"></span></div>
+                    </div>
+                </div>
+                <div class="report-card">
+                    <h3>Structure & Levels</h3>
+                    <div class="field-row"><span class="label">Demand / Supply</span><span class="value" id="rc-ds"></span></div>
+                    <div class="field-row"><span class="label">Support / Resistance</span><span class="value" id="rc-sr"></span></div>
+                    <div class="field-row"><span class="label">Liquidity Sweep</span><span class="value" id="rc-liq"></span></div>
+                    <div class="field-row"><span class="label">Break of Structure</span><span class="value" id="rc-bos"></span></div>
+                    <div class="field-row"><span class="label">Fair Value Gaps</span><span class="value" id="rc-fvg"></span></div>
+                    <div class="field-row"><span class="label">Change of Character</span><span class="value" id="rc-choch"></span></div>
+                </div>
+                <div class="report-card" style="border-left: 4px solid var(--accent-color)">
+                    <h3>Decision</h3>
+                    <div class="decision-value" id="rc-decision"></div>
+                    <div class="probability-value" id="rc-probability"></div>
+                </div>
+                <div class="chat-narrative-bubble">
+                    <h3>Final Word</h3>
+                    <p id="rc-final"></p>
+                </div>
+                <p class="disclaimer-line">VectraCore provides analytical tooling, not financial advice. This is not a recommendation to buy or sell any asset.</p>
+            `;
+            console.log("rc-symbol element:", viewport.querySelector('#rc-symbol'));
+            console.log("RENDER FUNCTION RECEIVED:", data);
+
+            viewport.querySelector('#rc-symbol').textContent = data.symbol || 'N/A';
+            viewport.querySelector('#rc-timeframe').textContent = data.timeframe || 'N/A';
+            viewport.querySelector('#rc-charttype').textContent = data.chart_type || 'N/A';
+            viewport.querySelector('#rc-structure').textContent = data.market_structure || 'N/A';
+
+            viewport.querySelector('#rc-ds').textContent = data.demand_supply || 'None';
+            viewport.querySelector('#rc-sr').textContent = data.support_resistance || 'None';
+            viewport.querySelector('#rc-liq').textContent = data.liquidity_sweep || 'None';
+            viewport.querySelector('#rc-bos').textContent =data.break_of_structure || 'None';
+            viewport.querySelector('#rc-fvg').textContent =data.fair_value_gap || 'None';
+            viewport.querySelector('#rc-choch').textContent = data.change_of_character || 'N/A';
+
+            viewport.querySelector('#rc-decision').textContent = data.decision || 'N/A';
+            const probability =
+                data.probability !== undefined &&
+                data.probability !== null
+                    ? `Win probability: ${data.probability}%`
+                    : '';
+            viewport.querySelector('#rc-probability').textContent = probability;
+
+            viewport.querySelector('#rc-final').textContent =
+                data.reasoning || '';
+            return;    
+        }
+
+        function renderError(message) {
+            const viewport = document.getElementById('ai-response-viewport');
+            viewport.innerHTML = `
+                <div class="error-bubble">
+                    <strong>Analysis failed:</strong> <span id="err-msg"></span>
+                </div>
+            `;
+            document.getElementById('err-msg').textContent = message;
+        }
+
+        let upgradeCountdownInterval = null;
+
+        // Breaks a seconds count into {h, m, s} for the segmented clock.
+        function splitCountdown(totalSeconds) {
+            totalSeconds = Math.max(0, totalSeconds);
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            return { h, m, s };
+        }
+
+        function pad2(n) {
+            return n.toString().padStart(2, '0');
+        }
+
+        function renderClockSegments(totalSeconds) {
+            const { h, m, s } = splitCountdown(totalSeconds);
+            return `
+                <div class="cd-segment"><span class="cd-value" id="cd-h">${pad2(h)}</span><span class="cd-unit">Hours</span></div>
+                <span class="cd-colon">:</span>
+                <div class="cd-segment"><span class="cd-value" id="cd-m">${pad2(m)}</span><span class="cd-unit">Min</span></div>
+                <span class="cd-colon">:</span>
+                <div class="cd-segment"><span class="cd-value" id="cd-s">${pad2(s)}</span><span class="cd-unit">Sec</span></div>
+            `;
+        }
+
+        function renderUpgradeAlert(data) {
+            if (upgradeCountdownInterval) {
+                clearInterval(upgradeCountdownInterval);
+                upgradeCountdownInterval = null;
+            }
+
+            const isRateLimit = data.upgrade_reason === 'rate_limit';
+            const title = isRateLimit ? '&#9203; Limit reached' : '&#9888; Upgrade for this feature';
+            const hasCountdown = typeof data.retry_after_seconds === 'number' && data.retry_after_seconds > 0;
+
+            // "chart" limits reset every 24h, "question" limits reset every 12h.
+            const resetLabel = data.type === 'chart'
+                ? 'Your chart-upload limit resets in'
+                : data.type === 'question'
+                    ? 'Your question limit resets in'
+                    : 'Resets in';
+
+            const viewport = document.getElementById('ai-response-viewport');
+            viewport.innerHTML = `
+                <div class="upgrade-bubble">
+                    <div class="upgrade-title">${title}</div>
+                    <p id="upgrade-msg"></p>
+                    ${hasCountdown ? `
+                        <div class="upgrade-countdown-wrap">
+                            <div class="upgrade-countdown-label">${resetLabel}</div>
+                            <div class="upgrade-countdown-clock" id="upgrade-clock">
+                                ${renderClockSegments(data.retry_after_seconds)}
+                            </div>
+                        </div>
+                    ` : ''}
+                    <div class="upgrade-plan-line">Upgrade to Pro/VIP plan to upload more / ask more.</div>
+                    <a class="upgrade-cta-btn" href="pricing.html">&#11014; Upgrade Plan</a>
+                </div>
+            `;
+            document.getElementById('upgrade-msg').textContent =
+                data.error || data.answer || 'This feature needs a higher plan.';
+
+            if (hasCountdown) {
+                let remaining = data.retry_after_seconds;
+                const clockEl = document.getElementById('upgrade-clock');
+
+                upgradeCountdownInterval = setInterval(() => {
+                    remaining -= 1;
+
+                    if (remaining <= 0) {
+                        clearInterval(upgradeCountdownInterval);
+                        upgradeCountdownInterval = null;
+                        clockEl.classList.add('cd-done');
+                        clockEl.innerHTML = `<div class="cd-segment" style="min-width:auto;padding:8px 16px;">
+                            <span class="cd-value" style="font-size:0.95rem;">Ready — try again now</span>
+                        </div>`;
+                        return;
+                    }
+
+                    const { h, m, s } = splitCountdown(remaining);
+                    document.getElementById('cd-h').textContent = pad2(h);
+                    document.getElementById('cd-m').textContent = pad2(m);
+                    document.getElementById('cd-s').textContent = pad2(s);
+                }, 1000);
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Pull the user's real saved history from the backend instead of a
+        // placeholder that resets on refresh.
+        async function loadHistory() {
+            const container = document.getElementById('history-container');
+            try {
+                const response = await fetch(`${API_BASE_URL}/history?email=${encodeURIComponent(activeProfile)}`);
+                if (!response.ok) throw new Error('Could not load history');
+                const entries = await response.json();
+
+                if (!entries.length) {
+                    container.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 10px 0;">No history logs detected for this session profile.</p>`;
+                    return;
+                }
+
+                container.innerHTML = entries.slice(0, 10).map(entry => `
+                    <div class="run-history-element">
+                        <div class="history-topline">
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <div class="history-question"></div>
+                    </div>
+                `).join('');
+
+                const nodes = container.querySelectorAll('.run-history-element');
+                entries.slice(0, 10).forEach((entry, i) => {
+                    const node = nodes[i];
+                    node.querySelector('.history-topline span:first-child').textContent = activeProfile;
+                    node.querySelector('.history-topline span:last-child').textContent = entry.timestamp || '';
+                    node.querySelector('.history-question').textContent = entry.question || '(chart-only analysis)';
+                });
+            } catch (err) {
+                container.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 10px 0;">Could not load history.</p>`;
+            }
+        }
+
+        loadHistory();
+
+        // --- FEEDBACK WINDOW CONTROLS ---
+        const feedbackModal = document.getElementById('feedback-modal');
+        const openFeedbackBtn = document.getElementById('open-feedback-btn');
+        const closeFeedbackBtn = document.getElementById('close-feedback-btn');
+        const feedbackEmailField = document.getElementById('feedback-sender-email');
+
+        openFeedbackBtn.addEventListener('click', () => {
+            feedbackModal.style.display = 'flex';
+        });
+
+        closeFeedbackBtn.addEventListener('click', () => {
+            feedbackModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === feedbackModal) {
+                feedbackModal.style.display = 'none';
+            }
+        });
+
+        const fbForm = document.getElementById('actual-feedback-form');
+        const fbSubmitBtn = document.getElementById('submit-fb-btn');
+
+        fbForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            // Honeypot anti-spam check
+            if (document.getElementById('fb-honey').value !== "") return;
+
+            fbSubmitBtn.disabled = true;
+            fbSubmitBtn.textContent = "Saving...";
+
+            const senderEmail = feedbackEmailField.value.trim();
+            const msgContent = document.getElementById('feedback-message').value.trim();
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/submit-feedback`, {
+                    method: "POST",
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: senderEmail,
+                        message: msgContent
+                    })
+                });
+
+                const result = await response.json().catch(() => ({}));
+                console.log("SERVER RESPONSE:", result);
+                if (response.ok) {
+                    alert("Thank you! Your feedback has been recorded.");
+                    document.getElementById('feedback-message').value = "";
+                    feedbackModal.style.display = 'none';
+                } else {
+                    throw new Error(result.error || "Server refused the feedback submission.");
+                }
+            } catch (err) {
+                alert("Failed to submit feedback: " + err.message);
+            } finally {
+                fbSubmitBtn.disabled = false;
+                fbSubmitBtn.textContent = "Submit Feedback";
+            }
+        });
+        const plan = localStorage.getItem("vectracore_plan") || "default";
+
+const badge = document.getElementById("navbar-plan-badge");
+badge.classList.remove("plan-default", "plan-pro", "plan-vip");
+badge.style.background = "";
+
+if(plan === "default"){
+    badge.classList.add("plan-default");
+    badge.innerHTML = `<span class="badge-label">✨ DEFAULT</span>`;
+}
+
+if(plan === "pro"){
+    badge.classList.add("plan-pro");
+    badge.innerHTML = `
+        <span class="pro-leaf pro-leaf-1">🍃</span>
+        <span class="pro-leaf pro-leaf-2">🌿</span>
+        <span class="pro-leaf pro-leaf-3">🍃</span>
+        <span class="badge-label">🌱 PRO</span>
+    `;
+}
+
+if(plan === "vip"){
+    badge.classList.add("plan-vip");
+    badge.innerHTML = `
+        <span class="vip-spark" style="left:12%; animation-delay:0s;"></span>
+        <span class="vip-spark" style="left:32%; animation-delay:0.6s;"></span>
+        <span class="vip-spark" style="left:58%; animation-delay:1.2s;"></span>
+        <span class="vip-spark" style="left:78%; animation-delay:1.9s;"></span>
+        <span class="badge-label">👑 VIP</span>
+    `;
+}
+                 
+    </script>
+</body>
+</html>
