@@ -1379,7 +1379,7 @@ Return JSON:
 
             )
 
-            result = json.loads(response.text)
+            result = _parse_model_json(response.text)
 
             return jsonify(result)
 
@@ -1388,43 +1388,58 @@ Return JSON:
         # GENERAL TRADING ASSISTANT
         # ==========================================================
 
-        # Pro and VIP plans are allowed to answer news/macro questions
-        # (see pro_prompt.py / vip_fundamental.py) — so fetch real headlines
-        # from Finnhub and hand them to the model as grounded context.
-        # Without this block, Gemini has no live internet access at all and
-        # will (correctly) say it can't see real-time news.
-        news_context_block = ""
+        # ------------------------------------------------------------
+        # Live news context — only default/pro/vip actually get to use
+        # this; the DEFAULT_PROMPT and PRO_PROMPT text already contains
+        # their own rules about when news is/isn't allowed, so we just
+        # make the real data available and let the plan's own prompt
+        # decide what to do with it.
+        # ------------------------------------------------------------
 
-        if plan in ("pro", "vip"):
+        news_context = ""
+
+        if plan in ("pro", "vip") and _looks_like_news_query(question):
+
             news_items = _fetch_news_headlines()
 
             if news_items:
-                news_context_block = f"""
+
+                news_context = f"""
 ==========================================================
-LIVE NEWS CONTEXT (real headlines, fetched just now)
+LIVE NEWS CONTEXT (real, current headlines — treat as fact)
 ==========================================================
 
 {_format_news_for_prompt(news_items)}
-
-Treat the above as real, current, and correct. Use it to answer
-the user's question if relevant. Do not claim you lack live news
-access when this section is present.
 """
-            else:
-                news_context_block = """
+
+            elif not FINNHUB_KEY:
+
+                news_context = """
 ==========================================================
 LIVE NEWS CONTEXT
 ==========================================================
 
-Live news is not currently available (FINNHUB_KEY missing, or the
-news source failed to respond). Tell the user plainly that live
-news isn't available right now rather than guessing or inventing
+NOTE: Live news is not configured on this server (missing
+FINNHUB_KEY). Tell the user plainly that live news isn't
+available right now — do not invent headlines.
+"""
+
+            else:
+
+                news_context = """
+==========================================================
+LIVE NEWS CONTEXT
+==========================================================
+
+NOTE: Live news could not be fetched right now (temporary
+issue reaching the news provider). Tell the user plainly
+that live news isn't available right now — do not invent
 headlines.
 """
 
         GENERAL_PROMPT = f"""
 {ACTIVE_PROMPT}
-{news_context_block}
+{news_context}
 ==========================================================
 USER MESSAGE
 ==========================================================
@@ -1467,7 +1482,7 @@ Return JSON:
 
         )
 
-        result = json.loads(response.text)
+        result = _parse_model_json(response.text)
 
         return jsonify(result)
 
