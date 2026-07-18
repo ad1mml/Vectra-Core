@@ -39,8 +39,6 @@ import time
 import logging
 import secrets
 import hashlib
-import smtplib
-from email.mime.text import MIMEText
 
 from prompts.vip_prompt import VIP_PROMPT
 from prompts.default_prompt import DEFAULT_PROMPT
@@ -86,16 +84,18 @@ MAX_HISTORY_PER_USER = 50
 NEWS_HEADLINE_LIMIT = 8
 NEWS_CACHE_TTL_SECONDS = 300  # avoid hammering Finnhub if several users ask in a row
 
-# Email verification — sends a 6-digit code via SMTP before an account is
-# ever created. Works with Gmail (use an App Password, not your real
-# password) or any other SMTP provider (SendGrid, Resend's SMTP endpoint,
-# your own mail server, etc). Set these in .env:
-#   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
-SMTP_USER = os.environ.get("SMTP_USER")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
-FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USER)
+# Email verification — sends a 6-digit code via Brevo's email API before an
+# account is ever created. Brevo has a genuinely free tier (300 emails/day,
+# no card required) and, importantly, sends over a normal HTTPS request
+# rather than a raw SMTP socket — which matters if you're hosting somewhere
+# (like PythonAnywhere's free tier) that blocks direct SMTP connections but
+# allows HTTPS calls to approved API hosts.
+#   1. Sign up free at https://www.brevo.com
+#   2. Go to Settings -> SMTP & API -> API Keys -> generate a new key
+#   3. Set BREVO_API_KEY and FROM_EMAIL in .env
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+FROM_EMAIL = os.environ.get("FROM_EMAIL")
+FROM_NAME = os.environ.get("FROM_NAME", "VectraCore")
 
 VERIFICATION_CODE_TTL_SECONDS = 600       # code valid for 10 minutes
 VERIFICATION_MAX_ATTEMPTS = 5              # wrong guesses allowed before the code is killed
@@ -364,10 +364,10 @@ def _hash_code(email: str, code: str) -> str:
 
 
 def _send_verification_email(to_email: str, code: str) -> bool:
-    if not (SMTP_USER and SMTP_PASSWORD and FROM_EMAIL):
+    if not (BREVO_API_KEY and FROM_EMAIL):
         app.logger.error(
-            "Email sending not configured — set SMTP_USER, SMTP_PASSWORD, "
-            "and FROM_EMAIL in .env before verification codes can be sent."
+            "Email sending not configured — set BREVO_API_KEY and FROM_EMAIL "
+            "in .env before verification codes can be sent."
         )
         return False
 
@@ -376,16 +376,29 @@ def _send_verification_email(to_email: str, code: str) -> bool:
         f"This code expires in {VERIFICATION_CODE_TTL_SECONDS // 60} minutes. "
         "If you didn't request this, you can safely ignore this email."
     )
-    msg = MIMEText(body)
-    msg["Subject"] = "Your VectraCore verification code"
-    msg["From"] = FROM_EMAIL
-    msg["To"] = to_email
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(FROM_EMAIL, [to_email], msg.as_string())
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "sender": {"name": FROM_NAME, "email": FROM_EMAIL},
+                "to": [{"email": to_email}],
+                "subject": "Your VectraCore verification code",
+                "textContent": body,
+            },
+            timeout=10,
+        )
+        if response.status_code >= 300:
+            app.logger.error(
+                "Brevo rejected the email to %s: %s %s",
+                to_email, response.status_code, response.text
+            )
+            return False
         return True
     except Exception as e:
         app.logger.error("Failed to send verification email to %s: %s", to_email, e)
