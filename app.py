@@ -1388,9 +1388,43 @@ Return JSON:
         # GENERAL TRADING ASSISTANT
         # ==========================================================
 
+        # Pro and VIP plans are allowed to answer news/macro questions
+        # (see pro_prompt.py / vip_fundamental.py) — so fetch real headlines
+        # from Finnhub and hand them to the model as grounded context.
+        # Without this block, Gemini has no live internet access at all and
+        # will (correctly) say it can't see real-time news.
+        news_context_block = ""
+
+        if plan in ("pro", "vip"):
+            news_items = _fetch_news_headlines()
+
+            if news_items:
+                news_context_block = f"""
+==========================================================
+LIVE NEWS CONTEXT (real headlines, fetched just now)
+==========================================================
+
+{_format_news_for_prompt(news_items)}
+
+Treat the above as real, current, and correct. Use it to answer
+the user's question if relevant. Do not claim you lack live news
+access when this section is present.
+"""
+            else:
+                news_context_block = """
+==========================================================
+LIVE NEWS CONTEXT
+==========================================================
+
+Live news is not currently available (FINNHUB_KEY missing, or the
+news source failed to respond). Tell the user plainly that live
+news isn't available right now rather than guessing or inventing
+headlines.
+"""
+
         GENERAL_PROMPT = f"""
 {ACTIVE_PROMPT}
-
+{news_context_block}
 ==========================================================
 USER MESSAGE
 ==========================================================
