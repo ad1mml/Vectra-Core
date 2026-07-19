@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pricing - VectraCore</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-color: #0b0e11;
@@ -14,9 +14,31 @@
             --accent-hover: #e02d25;
             --text-main: #f0f3f6;
             --text-muted: #848e9c;
+
+            /* Default — brushed steel / platinum */
+            --s1: #eef2f5;
+            --s2: #a7b1bc;
+            --s3: #4d5866;
+
+            /* Pro — emerald / botanical growth */
+            --g1: #6bf2b6;
+            --g2: #1fb37e;
+            --g3: #0c3d2c;
+
+            /* VIP — gold + amethyst */
+            --y1: #f6dd8c;
+            --y2: #c99a3b;
+            --p1: #c79bf5;
+            --p2: #7c3fd4;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-        body { background-color: var(--bg-color); color: var(--text-main); min-height: 100vh; }
+        body { background-color: var(--bg-color); color: var(--text-main); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+        a:focus-visible, button:focus-visible, .plan-btn:focus-visible {
+            outline: 2px solid var(--text-main); outline-offset: 3px; border-radius: 6px;
+        }
+        .logo h1, .plan-name, .plan-price .amount, h2.page-title {
+            font-family: 'Space Grotesk', 'Inter', sans-serif;
+        }
         header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 20px 80px; border-bottom: 1px solid rgba(42, 50, 63, 0.4);
@@ -43,52 +65,179 @@
 
         .plans {
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; text-align: left;
+            align-items: stretch;
         }
 
+        /* ============ BASE CARD (shared structure only) ============ */
         .plan-card {
-            background-color: var(--panel-bg); border: 1px solid var(--border-color);
-            border-radius: 14px; padding: 32px 28px; display: flex; flex-direction: column;
             position: relative;
+            overflow: hidden;
+            border-radius: 14px;
+            padding: 32px 28px;
+            display: flex; flex-direction: column;
+            border: 1px solid transparent;
+            background:
+                linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+                linear-gradient(150deg, var(--border-color), var(--border-color)) border-box;
+            transition: transform 0.25s ease;
         }
-
-        .plan-card.featured {
-            border-color: var(--accent-color);
-            box-shadow: 0 8px 30px rgba(255, 59, 48, 0.15);
-        }
+        .plan-card:hover { transform: translateY(-4px); }
 
         .plan-tag {
             position: absolute; top: -13px; left: 28px;
-            background-color: var(--accent-color); color: #fff;
+            color: #08110d;
             font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
             padding: 4px 12px; border-radius: 50px; text-transform: uppercase;
+            z-index: 3;
         }
 
-        .plan-name { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
-        .plan-desc { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.5; }
+        .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .icon-badge {
+            width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            position: relative; z-index: 2; border: 1px solid rgba(255,255,255,0.08);
+        }
+        .card-icon { width: 21px; height: 21px; flex-shrink: 0; }
+        .plan-name {
+            font-size: 1.45rem; font-weight: 700; position: relative; z-index: 2;
+            background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            letter-spacing: 0.2px;
+        }
+        .card-divider { height: 1px; margin: 0 0 16px; position: relative; z-index: 2; opacity: 0.5; }
+        .plan-desc { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.5; position: relative; z-index: 2; }
 
-        .plan-price { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
-        .plan-price .amount { font-size: 2.4rem; font-weight: 700; }
+        .plan-price { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; position: relative; z-index: 2; }
+        .plan-price .amount { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.5px; }
         .plan-price .period { color: var(--text-muted); font-size: 0.85rem; }
-        .plan-note { color: var(--text-muted); font-size: 0.78rem; margin-bottom: 24px; }
+        .plan-note { color: var(--text-muted); font-size: 0.78rem; margin-bottom: 24px; position: relative; z-index: 2; }
 
-        .plan-features { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; flex-grow: 1; }
+        .plan-features { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; flex-grow: 1; position: relative; z-index: 2; }
         .plan-features li { display: flex; align-items: flex-start; gap: 10px; font-size: 0.88rem; color: var(--text-main); line-height: 1.4; }
-        .plan-features svg { flex-shrink: 0; width: 16px; height: 16px; margin-top: 2px; color: var(--accent-color); }
-        .plan-features li.soon { color: var(--text-muted); }
-        .plan-features li.soon svg { color: var(--text-muted); }
+        .plan-features svg { flex-shrink: 0; width: 16px; height: 16px; margin-top: 2px; }
+        .plan-features li.unavailable { color: var(--text-muted); }
+        .plan-features li.unavailable svg { color: #545e6b; }
 
         .plan-btn {
-            background-color: transparent; color: var(--text-main); border: 2px solid var(--border-color);
+            background-color: transparent; color: var(--text-main); border: 1.5px solid var(--border-color);
             text-decoration: none; padding: 13px; font-size: 0.95rem; font-weight: 700; border-radius: 8px;
-            transition: border-color 0.2s, transform 0.1s, background-color 0.2s, color 0.2s;
+            transition: border-color 0.2s, transform 0.1s, background 0.25s, color 0.2s, box-shadow 0.3s;
             cursor: pointer; outline: none; text-align: center; display: block;
+            position: relative; z-index: 2;
         }
-        .plan-btn:hover { border-color: var(--text-muted); transform: translateY(-2px); }
+        .plan-btn:hover { transform: translateY(-2px); }
 
-        .plan-card.featured .plan-btn {
-            background-color: var(--accent-color); border-color: var(--accent-color); color: #fff;
+        /* ============ DEFAULT — brushed steel / platinum ============ */
+        .plan-card.default {
+            background:
+                repeating-linear-gradient(115deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 6px),
+                linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+                linear-gradient(150deg, var(--s1), var(--s3) 45%, var(--s2)) border-box;
         }
-        .plan-card.featured .plan-btn:hover { background-color: var(--accent-hover); }
+        .plan-card.default::before {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background: linear-gradient(200deg, rgba(230,236,240,0.10), transparent 40%);
+        }
+        .plan-card.default::after {
+            content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; z-index: 1; pointer-events: none;
+            background: linear-gradient(115deg, transparent, rgba(255,255,255,0.10), transparent);
+            transition: left 0.7s ease;
+        }
+        .plan-card.default:hover::after { left: 120%; }
+        .plan-card.default:hover { box-shadow: 0 14px 34px rgba(180,190,200,0.14); }
+        .plan-card.default .card-icon, .plan-card.default .plan-features svg { color: var(--s1); }
+        .plan-card.default .icon-badge {
+            background: linear-gradient(150deg, rgba(238,242,245,0.14), rgba(77,88,102,0.28));
+            box-shadow: inset 0 0 0 1px rgba(238,242,245,0.15);
+        }
+        .plan-card.default .plan-name { background-image: linear-gradient(135deg, var(--s1), var(--s2) 70%); }
+        .plan-card.default .card-divider { background: linear-gradient(90deg, var(--s1), transparent); }
+        .plan-card.default .plan-price .amount { color: var(--s1); }
+        .plan-card.default .plan-btn:hover {
+            background: linear-gradient(135deg, var(--s2), var(--s3));
+            border-color: var(--s2); color: #0b0e11;
+        }
+
+        /* ============ PRO — emerald / botanical growth ============ */
+        .plan-card.pro {
+            background:
+                radial-gradient(120% 100% at 50% -10%, rgba(52,201,143,0.16), transparent 55%),
+                linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+                linear-gradient(150deg, var(--g1), var(--g3) 55%, var(--g2)) border-box;
+            animation: pro-breathe 5s ease-in-out infinite;
+        }
+        @keyframes pro-breathe {
+            0%, 100% { box-shadow: 0 8px 30px rgba(31, 179, 126, 0.12); }
+            50% { box-shadow: 0 10px 40px rgba(31, 179, 126, 0.28); }
+        }
+        .plan-card.pro::before {
+            content: ""; position: absolute; right: -18px; bottom: -22px; width: 150px; height: 150px; z-index: 1; pointer-events: none;
+            opacity: 0.16;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 95 C 50 60, 50 55, 50 5' stroke='%2334c98f' stroke-width='3' fill='none'/><path d='M50 70 C 30 65, 20 50, 15 30 C 35 30, 48 42, 50 60 Z' fill='%2334c98f'/><path d='M50 55 C 70 48, 82 35, 88 18 C 68 20, 53 32, 50 48 Z' fill='%2334c98f'/><path d='M50 40 C 34 34, 26 22, 22 8 C 40 10, 50 20, 50 35 Z' fill='%2334c98f'/></svg>");
+            background-repeat: no-repeat; background-size: contain;
+        }
+        .plan-card.pro .plan-tag { background: linear-gradient(120deg, var(--g1), var(--g2)); }
+        .plan-card.pro .card-icon, .plan-card.pro .plan-features svg { color: var(--g1); }
+        .plan-card.pro .icon-badge {
+            background: linear-gradient(150deg, rgba(107,242,182,0.20), rgba(12,61,44,0.5));
+            box-shadow: inset 0 0 0 1px rgba(107,242,182,0.2);
+        }
+        .plan-card.pro .card-icon { transition: transform 0.4s ease; transform-origin: bottom center; }
+        .plan-card.pro:hover .card-icon { transform: rotate(-6deg) scale(1.08); }
+        .plan-card.pro .plan-name { background-image: linear-gradient(120deg, var(--g1), var(--g2) 75%); }
+        .plan-card.pro .card-divider { background: linear-gradient(90deg, var(--g1), transparent); }
+        .plan-card.pro .plan-price .amount { color: var(--g1); text-shadow: 0 0 18px rgba(52,201,143,0.35); }
+        .plan-card.pro .plan-btn {
+            background: linear-gradient(135deg, var(--g2), var(--g3)); border-color: var(--g2); color: #ecfff6;
+        }
+        .plan-card.pro .plan-btn:hover {
+            background: linear-gradient(135deg, var(--g1), var(--g2)); box-shadow: 0 6px 20px rgba(52,201,143,0.35);
+        }
+
+        /* ============ VIP — gold + amethyst glow ============ */
+        .plan-card.vip {
+            background:
+                radial-gradient(90% 70% at 0% 0%, rgba(246,221,140,0.16), transparent 55%),
+                radial-gradient(90% 70% at 100% 100%, rgba(124,63,212,0.22), transparent 55%),
+                linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+                linear-gradient(120deg, var(--y1), var(--p2) 40%, var(--p1) 60%, var(--y2)) border-box;
+            background-size: 100% 100%, 100% 100%, 100% 100%, 260% 260%;
+            animation: vip-shimmer 7s ease infinite;
+        }
+        @keyframes vip-shimmer {
+            0%   { background-position: 0 0, 0 0, 0 0, 0% 50%; }
+            50%  { background-position: 0 0, 0 0, 0 0, 100% 50%; }
+            100% { background-position: 0 0, 0 0, 0 0, 0% 50%; }
+        }
+        .plan-card.vip::before {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background-image:
+                radial-gradient(1.5px 1.5px at 20% 22%, #f6dd8c, transparent),
+                radial-gradient(1.5px 1.5px at 78% 15%, #c79bf5, transparent),
+                radial-gradient(1.5px 1.5px at 88% 62%, #f6dd8c, transparent),
+                radial-gradient(1.5px 1.5px at 12% 78%, #c79bf5, transparent),
+                radial-gradient(1.5px 1.5px at 60% 88%, #f6dd8c, transparent),
+                radial-gradient(1px 1px at 45% 8%, #f6dd8c, transparent),
+                radial-gradient(1px 1px at 35% 55%, #c79bf5, transparent);
+            animation: vip-twinkle 4s ease-in-out infinite;
+        }
+        @keyframes vip-twinkle { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.85; } }
+        .plan-card.vip:hover { box-shadow: 0 16px 40px rgba(124,63,212,0.22); }
+        .plan-card.vip .plan-tag { background: linear-gradient(120deg, var(--y1), var(--y2)); }
+        .plan-card.vip .card-icon, .plan-card.vip .plan-features svg { color: var(--y1); }
+        .plan-card.vip .icon-badge {
+            background: linear-gradient(150deg, rgba(246,221,140,0.22), rgba(124,63,212,0.35));
+            box-shadow: inset 0 0 0 1px rgba(246,221,140,0.25);
+        }
+        .plan-card.vip .plan-name { background-image: linear-gradient(120deg, var(--y1), var(--p1) 60%, var(--y1)); }
+        .plan-card.vip .card-divider { background: linear-gradient(90deg, var(--y1), var(--p1), transparent); }
+        .plan-card.vip .plan-price .amount { color: var(--y1); text-shadow: 0 0 20px rgba(199,155,245,0.4); }
+        .plan-card.vip .plan-btn {
+            background: linear-gradient(135deg, var(--y2), var(--p2)); border-color: var(--y2); color: #fff8e8;
+            box-shadow: 0 4px 22px rgba(124,63,212,0.25);
+        }
+        .plan-card.vip .plan-btn:hover {
+            background: linear-gradient(135deg, var(--y1), var(--p1)); box-shadow: 0 8px 30px rgba(199,155,245,0.4);
+        }
 
         .coming-soon-note {
             margin-top: 56px; padding: 20px 24px; background-color: var(--panel-bg);
@@ -102,6 +251,9 @@
         @media (max-width: 900px) {
             .plans { grid-template-columns: 1fr; }
             header { padding: 20px 24px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .plan-card, .plan-card.pro, .plan-card.vip, .plan-card.vip::before, .plan-card.default::after, .plan-card.pro .card-icon { animation: none !important; transition: none !important; }
         }
     </style>
     <link rel="icon" type="image/jpeg" href="/logo.jpeg">
@@ -117,9 +269,13 @@
         <p class="lede">Every tier is free while VectraCore is in beta. Pick the plan that matches how you'll use it — pricing and plan-specific AI agents are coming later.</p>
 
         <div class="plans">
-            <!-- Default -->
-            <div class="plan-card">
-                <div class="plan-name">Default</div>
+            <!-- Default — brushed steel -->
+            <div class="plan-card default">
+                <div class="card-head">
+                    <div class="icon-badge"><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z"/><path d="M12 2 V22 M3 7 L21 17 M21 7 L3 17"/></svg></div>
+                    <div class="plan-name">Default</div>
+                </div>
+                <div class="card-divider"></div>
                 <p class="plan-desc">For traders getting started with structural chart analysis.</p>
                 <div class="plan-price"><span class="amount">Free</span></div>
                 <p class="plan-note">Free forever — no card required</p>
@@ -127,15 +283,19 @@
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 2 chart analyses every 24 hours</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 10 text chats every 12 hours</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Technical chart analysis only</li>
-                    <li class="soon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> No economic or political news</li>
+                    <li class="unavailable"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg> No economic or political news</li>
                 </ul>
                 <a href="index.html?plan=default" class="plan-btn trigger-plan" data-plan="default">Get Started</a>
             </div>
 
-            <!-- Pro -->
-            <div class="plan-card featured">
+            <!-- Pro — emerald / botanical -->
+            <div class="plan-card pro">
                 <div class="plan-tag">Most Popular</div>
-                <div class="plan-name">Pro</div>
+                <div class="card-head">
+                    <div class="icon-badge"><svg class="card-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" d="M12 22V8"/><path d="M12 14c-4-.6-6.4-3-7-7 4 0 6.6 2 7 6z"/><path d="M12 10c4-.6 6.6-3 7-7-4 0-6.6 2-7 6z"/></svg></div>
+                    <div class="plan-name">Pro</div>
+                </div>
+                <div class="card-divider"></div>
                 <p class="plan-desc">For active traders who want faster, deeper reads on every setup.</p>
                 <div class="plan-price"><span class="amount">Free</span></div>
                 <p class="plan-note">Free during beta — paid tier coming later</p>
@@ -148,19 +308,23 @@
                 <a href="index.html?plan=pro" class="plan-btn trigger-plan" data-plan="pro">Get Started</a>
             </div>
 
-            <!-- VIP -->
-            <div class="plan-card">
-                <div class="plan-name">VIP</div>
+            <!-- VIP — gold + amethyst -->
+            <div class="plan-card vip">
+                <div class="card-head">
+                    <div class="icon-badge"><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 3 H18 L22 9 L12 22 L2 9 Z"/><path d="M2 9 H22 M9 3 L12 9 L15 3 M12 9 L8 22 M12 9 L16 22"/></svg></div>
+                    <div class="plan-name">VIP</div>
+                </div>
+                <div class="card-divider"></div>
                 <p class="plan-desc">For serious traders who want the full VectraCore experience, first.</p>
                 <div class="plan-price"><span class="amount">Free</span></div>
                 <p class="plan-note">Free during beta — paid tier coming later</p>
                 <ul class="plan-features">
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Unlimited everything</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Combines technical and fundamental analysis</li>
-                    <li class="soon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> Multi-timeframe analysis — coming soon</li>
-                    <li class="soon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> Economic calendar integration — coming soon</li>
-                    <li class="soon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> Chart comparison over time — coming soon</li>
-                    <li class="soon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg> Deeper market structure understanding — coming soon</li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Multi-timeframe analysis</li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Economic calendar integration</li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Chart comparison over time</li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Deeper market structure understanding</li>
                 </ul>
                 <a href="index.html?plan=vip" class="plan-btn trigger-plan" data-plan="vip">Get Started</a>
             </div>
