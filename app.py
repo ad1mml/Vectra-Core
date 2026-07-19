@@ -81,17 +81,28 @@ MODEL_NAME = os.environ.get("GEMINI_MODEL", "models/gemma-4-26b-a4b-it")
 PLAN_CONFIG = {
     "default": {
         "temperature": 0.20,
-        "top_p": 0.90
+        "top_p": 0.90,
+        # "low" thinking keeps Default fast — its prompt is the simplest
+        # of the three, so it doesn't need deep internal reasoning anyway.
+        "thinking_level": "low"
     },
 
     "pro": {
         "temperature": 0.15,
-        "top_p": 0.85
+        "top_p": 0.85,
+        # Pro's prompt is close to VIP's technical depth now, so it still
+        # benefits from some reasoning — "low" balances that against speed.
+        "thinking_level": "low"
     },
 
     "vip": {
         "temperature": 0.10,
-        "top_p": 0.80
+        "top_p": 0.80,
+        # VIP's prompt is built around a deliberate multi-step reasoning
+        # framework (14-step VIP_REASONING sequence, confluence scoring,
+        # self-review, etc.) — "medium" keeps some of that depth while
+        # still being much faster than the "high" default.
+        "thinking_level": "medium"
     }
 }
 PLAN_MODELS = {
@@ -1305,7 +1316,11 @@ USER REQUEST
 
     temperature=PLAN_SETTINGS["temperature"],
 
-    top_p=PLAN_SETTINGS["top_p"]
+    top_p=PLAN_SETTINGS["top_p"],
+
+    thinking_config=types.ThinkingConfig(
+        thinking_level=PLAN_SETTINGS["thinking_level"]
+    )
 
 )
 
@@ -1435,8 +1450,14 @@ Return JSON:
 
                     temperature=PLAN_SETTINGS["temperature"],
 
-                    top_p=PLAN_SETTINGS["top_p"]
- 
+                    top_p=PLAN_SETTINGS["top_p"],
+
+                    # Follow-ups are meant to be quick answers, not a full
+                    # re-analysis, so force "low" here regardless of plan.
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level="low"
+                    )
+
                 )
             )
 
@@ -1525,7 +1546,11 @@ Return JSON:
 
                 temperature=PLAN_SETTINGS["temperature"],
 
-                top_p=PLAN_SETTINGS["top_p"]
+                top_p=PLAN_SETTINGS["top_p"],
+
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=PLAN_SETTINGS["thinking_level"]
+                )
 
             )
 
