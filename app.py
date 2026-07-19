@@ -1232,9 +1232,39 @@ def analyze_chart():
 
             image_bytes = chart.read()
 
+            # Only VIP is allowed to combine chart analysis with real news
+            # (Default and Pro must stay technical-only on charts — see
+            # their own prompt files). So only fetch/attach live news here
+            # when the active plan is VIP.
+            chart_news_block = ""
+            if plan == "vip":
+                vip_news_items = _fetch_news_headlines()
+                if vip_news_items:
+                    chart_news_block = f"""
+==========================================================
+LIVE NEWS CONTEXT (real headlines, fetched just now)
+==========================================================
+
+{_format_news_for_prompt(vip_news_items)}
+
+Treat the above as real, current, and correct. Weigh it alongside
+the chart's technical picture as your vip_market_regime and
+vip_fundamental modules describe.
+"""
+                else:
+                    chart_news_block = """
+==========================================================
+LIVE NEWS CONTEXT
+==========================================================
+
+Live news is not currently available right now. Base this analysis
+primarily on technical evidence and say so if the user asks about
+news specifically.
+"""
+
             SYSTEM_PROMPT = f"""
 {ACTIVE_PROMPT}
-
+{chart_news_block}
 ==========================================================
 USER PLAN
 ==========================================================
@@ -1419,9 +1449,44 @@ Return JSON:
         # GENERAL TRADING ASSISTANT
         # ==========================================================
 
+        # Pro and VIP plans are allowed to answer news/macro questions
+        # (see pro_prompt.py MODE 2, and the vip_news / vip_macro modules
+        # inside vip_prompt.py) — so fetch real headlines from Finnhub and
+        # hand them to the model as grounded context. Without this block,
+        # Gemini has no live internet access at all and will (correctly)
+        # say it can't see real-time news.
+        news_context_block = ""
+
+        if plan in ("pro", "vip"):
+            news_items = _fetch_news_headlines()
+
+            if news_items:
+                news_context_block = f"""
+==========================================================
+LIVE NEWS CONTEXT (real headlines, fetched just now)
+==========================================================
+
+{_format_news_for_prompt(news_items)}
+
+Treat the above as real, current, and correct. Use it to answer
+the user's question if relevant. Do not claim you lack live news
+access when this section is present.
+"""
+            else:
+                news_context_block = """
+==========================================================
+LIVE NEWS CONTEXT
+==========================================================
+
+Live news is not currently available (FINNHUB_KEY missing, or the
+news source failed to respond). Tell the user plainly that live
+news isn't available right now rather than guessing or inventing
+headlines.
+"""
+
         GENERAL_PROMPT = f"""
 {ACTIVE_PROMPT}
-
+{news_context_block}
 ==========================================================
 USER MESSAGE
 ==========================================================
