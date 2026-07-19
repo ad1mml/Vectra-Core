@@ -78,6 +78,27 @@ if not ADMIN_SECRET_KEY:
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY")  # powers /market-sentiment AND chat news lookups
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "models/gemma-4-26b-a4b-it")
+PLAN_CONFIG = {
+    "default": {
+        "temperature": 0.20,
+        "top_p": 0.90
+    },
+
+    "pro": {
+        "temperature": 0.15,
+        "top_p": 0.85
+    },
+
+    "vip": {
+        "temperature": 0.10,
+        "top_p": 0.80
+    }
+}
+PLAN_MODELS = {
+    "default": MODEL_NAME,
+    "pro": MODEL_NAME,
+    "vip": MODEL_NAME
+}
 FALLBACK_MODEL_NAME = os.environ.get("GEMINI_FALLBACK_MODEL", "models/gemma-4-26b-a4b-it")
 MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8MB upload cap
 MAX_HISTORY_PER_USER = 50
@@ -1153,6 +1174,14 @@ def analyze_chart():
             plan,
             DEFAULT_PROMPT
         )
+        PLAN_SETTINGS = PLAN_CONFIG.get(
+            plan,
+            PLAN_CONFIG["default"]
+        )
+        ACTIVE_MODEL = PLAN_MODELS.get(
+            plan,
+            MODEL_NAME
+        )
 
         print(f"ACTIVE AI -> {plan.upper()}")
 
@@ -1227,7 +1256,7 @@ USER REQUEST
 
             response = client.models.generate_content(
 
-                model=MODEL_NAME,
+                model=ACTIVE_MODEL,
 
                 contents=[
 
@@ -1242,13 +1271,13 @@ USER REQUEST
 
                 config=types.GenerateContentConfig(
 
-                    response_mime_type="application/json",
+    response_mime_type="application/json",
 
-                    temperature=0.15,
+    temperature=PLAN_SETTINGS["temperature"],
 
-                    top_p=0.85
+    top_p=PLAN_SETTINGS["top_p"]
 
-                )
+)
 
             )
 
@@ -1365,7 +1394,8 @@ Return JSON:
 """
             response = client.models.generate_content(
 
-                model=MODEL_NAME,
+                model=ACTIVE_MODEL,
+                
 
                 contents=[FOLLOWUP_PROMPT],
 
@@ -1373,13 +1403,14 @@ Return JSON:
 
                     response_mime_type="application/json",
 
-                    temperature=0.25
+                    temperature=PLAN_SETTINGS["temperature"],
 
+                    top_p=PLAN_SETTINGS["top_p"]
+ 
                 )
-
             )
 
-            result = _parse_model_json(response.text)
+            result = json.loads(response.text)
 
             return jsonify(result)
 
@@ -1388,58 +1419,9 @@ Return JSON:
         # GENERAL TRADING ASSISTANT
         # ==========================================================
 
-        # ------------------------------------------------------------
-        # Live news context — only default/pro/vip actually get to use
-        # this; the DEFAULT_PROMPT and PRO_PROMPT text already contains
-        # their own rules about when news is/isn't allowed, so we just
-        # make the real data available and let the plan's own prompt
-        # decide what to do with it.
-        # ------------------------------------------------------------
-
-        news_context = ""
-
-        if plan in ("pro", "vip") and _looks_like_news_query(question):
-
-            news_items = _fetch_news_headlines()
-
-            if news_items:
-
-                news_context = f"""
-==========================================================
-LIVE NEWS CONTEXT (real, current headlines — treat as fact)
-==========================================================
-
-{_format_news_for_prompt(news_items)}
-"""
-
-            elif not FINNHUB_KEY:
-
-                news_context = """
-==========================================================
-LIVE NEWS CONTEXT
-==========================================================
-
-NOTE: Live news is not configured on this server (missing
-FINNHUB_KEY). Tell the user plainly that live news isn't
-available right now — do not invent headlines.
-"""
-
-            else:
-
-                news_context = """
-==========================================================
-LIVE NEWS CONTEXT
-==========================================================
-
-NOTE: Live news could not be fetched right now (temporary
-issue reaching the news provider). Tell the user plainly
-that live news isn't available right now — do not invent
-headlines.
-"""
-
         GENERAL_PROMPT = f"""
 {ACTIVE_PROMPT}
-{news_context}
+
 ==========================================================
 USER MESSAGE
 ==========================================================
@@ -1468,7 +1450,7 @@ Return JSON:
 
         response = client.models.generate_content(
 
-            model=MODEL_NAME,
+            model=ACTIVE_MODEL,
 
             contents=[GENERAL_PROMPT],
 
@@ -1476,13 +1458,15 @@ Return JSON:
 
                 response_mime_type="application/json",
 
-                temperature=0.45
+                temperature=PLAN_SETTINGS["temperature"],
+
+                top_p=PLAN_SETTINGS["top_p"]
 
             )
 
         )
 
-        result = _parse_model_json(response.text)
+        result = json.loads(response.text)
 
         return jsonify(result)
 
