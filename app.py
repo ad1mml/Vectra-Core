@@ -33,6 +33,7 @@ import os
 import io
 import re
 import csv
+import copy
 import traceback
 import json
 import time
@@ -490,10 +491,27 @@ def _make_gemini_contents(raw_contents):
     return parts
 
 
-def _generate_with_retry(model, contents, config=None, max_retries=3, base_delay=1.0):
-    """Improved retry logic"""
+def _generate_with_retry(model, contents, config=None, max_retries=2, base_delay=0.5, timeout_ms=9000):
+    """
+    Bounded retry logic. Each individual Gemini call is capped at
+    `timeout_ms` (default 9s) via http_options, and only 2 attempts are
+    made with a short fixed backoff — this keeps the worst-case total
+    time for a single model well under PythonAnywhere's own request
+    timeout, instead of silently stacking up to minutes of retries.
+    """
     last_exc = None
     start_total = time.perf_counter()
+
+    # Attach a hard per-request timeout without mutating the caller's
+    # config object.
+    if config is not None:
+        config = copy.deepcopy(config)
+        config.http_options = types.HttpOptions(timeout=timeout_ms)
+    else:
+        config = types.GenerateContentConfig(
+            http_options=types.HttpOptions(timeout=timeout_ms)
+        )
+
     for attempt in range(max_retries):
         try:
             start_request = time.perf_counter()
@@ -546,7 +564,7 @@ def _generate_content_resilient(contents, config=None):
             model=FALLBACK_MODEL_NAME,
             contents=gemini_contents,
             config=config,
-            max_retries=3
+            max_retries=2
         )
 
 
@@ -570,7 +588,7 @@ def _analyze_generate(model, contents, config=None):
             model=FALLBACK_MODEL_NAME,
             contents=contents,
             config=config,
-            max_retries=3
+            max_retries=2
         )
 
 
@@ -740,9 +758,53 @@ NEWS_SENTIMENT_PROMPT_TEMPLATE = (
     "-1.0 to 1.0), and 'analysis_reasoning' (a 2-sentence explanation).\n\n"
     "Headlines:\n{headlines}"
 )
+def _local_json_repair(text):
+    """
+    Fast, local-only repair for truncated/malformed JSON — no network
+    call. Handles the common case of a response that got cut off
+    mid-object (e.g. hit max_output_tokens) by trimming back to the
+    last complete field and closing any open braces/brackets/quotes.
+    Returns a parsed dict, or None if it truly can't be salvaged.
+    """
+    # Try trimming back to the last complete comma-separated field and
+    # re-closing the object.
+    depth = 0
+    in_string = False
+    escape = False
+    last_safe_cut = None
+
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+        elif ch == "," and depth == 1:
+            last_safe_cut = i
+
+    if last_safe_cut is None:
+        return None
+
+    candidate = text[:last_safe_cut] + "}"
+    try:
+        return json.loads(candidate)
+    except Exception:
+        return None
+
+
 def _safe_json(response):
     if response is None or response.text is None:
-            raise Exception("Gemini returned an empty response.")
+        raise Exception("Gemini returned an empty response.")
 
     text = response.text.strip()
 
@@ -753,28 +815,40 @@ def _safe_json(response):
 
     try:
         return json.loads(text)
-
     except Exception:
+        pass
 
-        # One automatic repair attempt
-        repair_prompt = f"""
-Fix this JSON.
+    # Fast local repair first — no network round-trip, near-instant.
+    repaired = _local_json_repair(text)
+    if repaired is not None:
+        app.logger.warning("JSON repaired locally (response was likely truncated).")
+        return repaired
 
-Return ONLY valid JSON.
-
-{text}
-"""
-
-        repaired = client.models.generate_content(
+    # Local repair couldn't salvage it — try ONE quick network repair
+    # attempt with a short timeout, rather than letting it hang.
+    try:
+        repair_prompt = f"Fix this JSON. Return ONLY valid JSON, nothing else.\n\n{text}"
+        repaired_response = client.models.generate_content(
             model=MODEL_NAME,
             contents=repair_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                temperature=0
+                temperature=0,
+                max_output_tokens=2048,
+                http_options=types.HttpOptions(timeout=6000)
             )
         )
-
-        return json.loads(repaired.text)
+        return json.loads(repaired_response.text)
+    except Exception as e:
+        app.logger.error("JSON repair failed entirely: %s", e)
+        # Never raise here — always hand back a valid, well-formed dict
+        # so the frontend gets real JSON instead of a crash/timeout.
+        return {
+            "answer": "",
+            "reasoning": "",
+            "decision": "WAIT",
+            "error": "The AI's response couldn't be parsed this time — please try again.",
+        }
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -1494,42 +1568,13 @@ USER REQUEST
         # FOLLOW-UP
         # ==========================================================
 
-        chart_keywords = [
-
-            "why",
-            "probability",
-            "buy",
-            "sell",
-            "entry",
-            "sl",
-            "tp",
-            "stop loss",
-            "take profit",
-            "liquidity",
-            "sweep",
-            "order block",
-            "choch",
-            "bos",
-            "market structure",
-            "fvg",
-            "fair value gap",
-            "confirmation"
-
-        ]
-
-        is_chart_followup = (
-
-            previous_analysis != ""
-
-            and any(
-
-                keyword in question.lower()
-
-                for keyword in chart_keywords
-
-            )
-
-        )
+        # Any text-only question is treated as an interactive follow-up
+        # as long as there's a previous chart/analysis in this user's
+        # memory — for ALL plans (default, pro, vip). Keyword-matching
+        # was too fragile (missed valid follow-ups like "what about the
+        # trend now" that don't contain one of the listed words), so any
+        # question with existing context now goes through this path.
+        is_chart_followup = previous_analysis != ""
 
         if is_chart_followup:
 
