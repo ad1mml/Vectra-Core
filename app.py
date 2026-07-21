@@ -1389,6 +1389,12 @@ USER REQUEST
                 ]
 
             })
+            _save_json(
+                "chart_memory.json",
+                memory
+            )
+
+            return jsonify(result)
         # ==========================================================
         # QUESTION LIMIT CHECK (applies to MODE 2 + MODE 3 — any
         # text-only request that isn't a chart upload)
