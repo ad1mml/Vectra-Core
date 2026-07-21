@@ -1424,17 +1424,24 @@ USER REQUEST
 
             result = _safe_json(response)
             summary = {
-                "asset": result.get("asset", ""),
-                "timeframe": result.get("timeframe", ""),
-                "bias": result.get("bias", ""),
-                "decision": result.get("decision", ""),
-                "entry": result.get("entry", ""),
-                "execution": result.get("execution", ""),
-                "tp": result.get("tp", ""),
-                "sl": result.get("sl", ""),
-                "probability": result.get("probability", ""),
-                "reason": result.get("reason", "")
+                "symbol": result.get("Symbol", ""),
+                "timeframe": result.get("Timeframe", ""),
+                "market_structure": result.get("Market Structure", ""),
+                "decision": result.get("Decision", ""),
+                "probability": result.get("Win probability", ""),
+                "final_word": result.get("Final Word", "")
             }
+
+            decision = str(result.get("Decision", "")).upper()
+
+            if decision in ("BUY", "SELL"):
+                summary.update({
+                    "entry": result.get("Entry", ""),
+                    "take_profit": result.get("Take Profit", ""),
+                    "stop_loss": result.get("Stop Loss", ""),
+                    "execution": result.get("Execution", ""),
+                    "invalidation": result.get("Invalidation", "")
+                })
            
 
             app.logger.error("SUMMARY CREATED SUCCESSFULLY")
@@ -1623,6 +1630,7 @@ Return JSON:
 
                 )
             )
+            app.logger.error("FOLLOWUP RAW RESPONSE:\n%s", response.text)
 
             result = _safe_json(response)
             memory[user_email][-1]["conversation"].append({
