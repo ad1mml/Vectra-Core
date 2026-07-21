@@ -741,6 +741,9 @@ NEWS_SENTIMENT_PROMPT_TEMPLATE = (
     "Headlines:\n{headlines}"
 )
 def _safe_json(response):
+    if response is None or response.text is None:
+            raise Exception("Gemini returned an empty response.")
+
     text = response.text.strip()
 
     # Remove markdown fences if Gemini returns them
