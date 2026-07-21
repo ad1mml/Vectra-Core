@@ -85,28 +85,34 @@ PLAN_CONFIG = {
     "default": {
         "temperature": 0.20,
         "top_p": 0.90,
-        # "low" thinking keeps Default fast — its prompt is the simplest
+        # "minimal" thinking keeps Default fast — its prompt is the simplest
         # of the three, so it doesn't need deep internal reasoning anyway.
-        "thinking_level": "low"
+        # ("low" still does meaningful step-by-step reasoning before
+        # writing output — "minimal" skips most of that for latency.)
+        "thinking_level": "minimal"
     },
 
     "pro": {
         "temperature": 0.15,
         "top_p": 0.85,
-        # Pro's prompt is close to VIP's technical depth now, so it still
-        # benefits from some reasoning — "low" balances that against speed.
-        "thinking_level": "low"
+        # Pro's prompt is close to VIP's technical depth now, so speed here
+        # comes almost entirely from thinking_level rather than prompt
+        # size — "minimal" is the real lever, not "low".
+        "thinking_level": "minimal"
     },
 
     "vip": {
         "temperature": 0.10,
         "top_p": 0.80,
-        # Dropped from "medium" to "low" — VIP's prompt is still huge (23
-        # modules), so even "medium" thinking was adding noticeable delay.
-        # "low" trades some of the step-by-step internal reasoning depth
-        # for real speed. The final JSON structure/fields are unaffected —
-        # this only affects how much the model deliberates before writing.
-        "thinking_level": "low"
+        # VIP's prompt is still huge (~20 concatenated specialist modules,
+        # all sent every call regardless of which are actually relevant),
+        # so the model has a lot of input to read before it even starts
+        # "thinking" — that input-processing time is NOT controlled by
+        # thinking_level at all. "minimal" removes the one lever we can
+        # control here; the prompt-size lever still needs addressing
+        # separately (see note in vip_prompt.py) if this still isn't fast
+        # enough.
+        "thinking_level": "minimal"
     }
 }
 PLAN_MODELS = {
@@ -129,12 +135,27 @@ NEWS_CACHE_TTL_SECONDS = 300  # avoid hammering Finnhub if several users ask in 
 # place, Flask always gets control back within HARD_DEADLINE_SECONDS and can
 # return a clean JSON error, instead of the user staring at a spinner for
 # minutes with nothing in the logs.
-HARD_DEADLINE_SECONDS = float(os.environ.get("AI_HARD_DEADLINE_SECONDS", "9.0"))
-# Per-attempt timeout inside _generate_with_retry. Kept short and well under
-# HARD_DEADLINE_SECONDS so that a primary-model attempt that times out still
-# leaves enough of the budget for a fallback-model attempt to run before the
-# hard deadline above cuts things off.
-PER_ATTEMPT_TIMEOUT_MS = int(os.environ.get("AI_PER_ATTEMPT_TIMEOUT_MS", "4000"))
+#
+# NOTE: the Gemini API itself rejects any http_options.timeout below 10s
+# ("Manually set deadline Xs is too short. Minimum allowed deadline is
+# 10s.") — so PER_ATTEMPT_TIMEOUT_MS can't go below 10000, and a true
+# sub-10s ceiling isn't achievable in a request that needs to fall back to
+# a second model, since one attempt alone already needs the full 10s
+# floor. It also isn't achievable at all for VIP/Pro's large, multi-module
+# prompts if genuine input-processing + thinking time exceeds it — a
+# deadline can only cap how long you wait, it can't make the model think
+# faster. 25s here is a realistic safety net given real observed latency
+# (unbounded requests were taking 60-120s before this file's changes) —
+# it's not "10s", but it turns "hang for 1-2 minutes with an empty log"
+# into "fail fast and cleanly if something is genuinely stuck," while
+# giving legitimate processing (especially VIP's large prompt) real room
+# to actually finish successfully instead of being cut off pre-emptively.
+# If you need this closer to 10s, the fix is cutting VIP/Pro's prompt size
+# and/or output length, not lowering this number further.
+HARD_DEADLINE_SECONDS = float(os.environ.get("AI_HARD_DEADLINE_SECONDS", "25.0"))
+# Per-attempt timeout inside _generate_with_retry. Must stay >= 10000 (the
+# Gemini API's own enforced floor).
+PER_ATTEMPT_TIMEOUT_MS = max(10000, int(os.environ.get("AI_PER_ATTEMPT_TIMEOUT_MS", "10000")))
 
 # Email verification — sends a 6-digit code via Brevo's email API before an
 # account is ever created. Brevo has a genuinely free tier (300 emails/day,
@@ -511,8 +532,9 @@ def _make_gemini_contents(raw_contents):
 def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay=0.5, timeout_ms=PER_ATTEMPT_TIMEOUT_MS):
     """
     Bounded retry logic. Each individual Gemini call is capped at
-    `timeout_ms` (default PER_ATTEMPT_TIMEOUT_MS, currently 4s). This used
-    to default to 45s, on the theory that large prompts (like VIP's) with
+    `timeout_ms` (default PER_ATTEMPT_TIMEOUT_MS, 10s — the Gemini API's
+    own enforced minimum; it rejects anything shorter). This used to
+    default to 45s, on the theory that large prompts (like VIP's) with
     an uploaded chart image need more time — but that's what let a single
     slow/overloaded call eat the user's entire response-time budget with
     nothing to show for it. Speed now comes from using fast models
