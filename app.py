@@ -491,10 +491,10 @@ def _make_gemini_contents(raw_contents):
     return parts
 
 
-def _generate_with_retry(model, contents, config=None, max_retries=2, base_delay=0.5, timeout_ms=9000):
+def _generate_with_retry(model, contents, config=None, max_retries=2, base_delay=0.5, timeout_ms=15000):
     """
     Bounded retry logic. Each individual Gemini call is capped at
-    `timeout_ms` (default 9s) via http_options, and only 2 attempts are
+    `timeout_ms` (default 15s — Gemini's minimum allowed deadline is
     made with a short fixed backoff — this keeps the worst-case total
     time for a single model well under PythonAnywhere's own request
     timeout, instead of silently stacking up to minutes of retries.
@@ -835,7 +835,7 @@ def _safe_json(response):
                 response_mime_type="application/json",
                 temperature=0,
                 max_output_tokens=2048,
-                http_options=types.HttpOptions(timeout=6000)
+                http_options=types.HttpOptions(timeout=10000)
             )
         )
         return json.loads(repaired_response.text)
