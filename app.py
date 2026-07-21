@@ -605,10 +605,16 @@ def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SE
     def _do_call():
         try:
             gemini_contents = _make_gemini_contents(contents)
+            # max_retries=2: one real retry (with backoff) on a transient
+            # error before giving up on this model — a bare 503 "high
+            # demand" is exactly the kind of blip Google's own error
+            # message says is "usually temporary," so it deserves at least
+            # one second attempt before burning the fallback model too.
             return _generate_with_retry(
                 model=MODEL_NAME,
                 contents=gemini_contents,
-                config=config
+                config=config,
+                max_retries=2
             )
         except Exception as e:
             if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == MODEL_NAME:
@@ -619,7 +625,7 @@ def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SE
                 model=FALLBACK_MODEL_NAME,
                 contents=gemini_contents,
                 config=config,
-                max_retries=1
+                max_retries=2
             )
 
     future = _analyze_executor.submit(_do_call)
@@ -661,7 +667,12 @@ def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECON
     """
     def _do_call():
         try:
-            return _generate_with_retry(model=model, contents=contents, config=config)
+            # max_retries=2: one real retry (with backoff) before falling
+            # over to the fallback model — a bare 503 "high demand" is
+            # exactly the kind of blip Google's own error message calls
+            # "usually temporary," so it deserves one more attempt on the
+            # same model before burning the fallback too.
+            return _generate_with_retry(model=model, contents=contents, config=config, max_retries=2)
         except Exception as e:
             if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == model:
                 raise
@@ -672,7 +683,7 @@ def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECON
                 model=FALLBACK_MODEL_NAME,
                 contents=contents,
                 config=config,
-                max_retries=1
+                max_retries=2
             )
 
     future = _analyze_executor.submit(_do_call)
