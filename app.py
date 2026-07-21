@@ -1235,18 +1235,29 @@ def analyze_chart():
         previous_analysis = ""
 
         previous_question = ""
+        previous_conversation = ""
 
         if memory[user_email]:
 
+            latest = memory[user_email][-1]
+
             previous_analysis = json.dumps(
-                memory[user_email][-1]["analysis"],
+                latest["analysis"],
                 indent=2
             )
-
-            previous_question = memory[user_email][-1].get(
+            print("Previous analysis length:", len(previous_analysis))
+               
+            previous_question = latest.get(
                 "question",
                 ""
             )
+
+            conversation = latest.get("conversation", [])
+
+            previous_conversation = "\n".join(
+                f'{msg["role"].upper()}: {msg["content"]}'
+                for msg in conversation
+            )  
 
         # ==========================================================
         # MODE 1
@@ -1364,17 +1375,20 @@ USER REQUEST
 
                 "question": question,
 
-                "analysis": result
+                "analysis": result,
+
+                "conversation": [
+                    {
+                        "role": "user",
+                        "content": question
+                    },
+                    {
+                        "role": "assistant",
+                        "content": result
+                   }
+                ]
 
             })
-
-            _save_json(
-                "chart_memory.json",
-                memory
-            )
-
-            return jsonify(result)
-
         # ==========================================================
         # QUESTION LIMIT CHECK (applies to MODE 2 + MODE 3 — any
         # text-only request that isn't a chart upload)
@@ -1440,6 +1454,16 @@ USER REQUEST
 {ACTIVE_PROMPT}
 
 ==========================================================
+CURRENT ACTIVE CHART
+==========================================================
+
+The following chart analysis is the ACTIVE chart currently
+being discussed.
+
+Everything the user asks refers to THIS chart unless they
+explicitly mention another asset.
+
+==========================================================
 PREVIOUS USER REQUEST
 ==========================================================
 
@@ -1450,6 +1474,35 @@ PREVIOUS ANALYSIS
 ==========================================================
 
 {previous_analysis}
+==========================================================
+CONVERSATION SO FAR
+==========================================================
+
+{previous_conversation}
+
+
+==========================================================
+IMPORTANT
+==========================================================
+
+Treat this as an ongoing conversation.
+
+Never answer as if this is a brand new chat.
+
+If the user asks:
+
+- When should I enter?
+- Is it still valid?
+- Should I wait?
+- What if price breaks?
+- Is my TP still valid?
+- What is my execution?
+- Should I cancel the trade?
+
+Always answer according to the previous chart analysis.
+
+Only ignore previous analysis if the user explicitly asks about
+another asset or uploads another chart.
 
 ==========================================================
 FOLLOW-UP QUESTION
@@ -1457,9 +1510,9 @@ FOLLOW-UP QUESTION
 
 {question}
 
-Answer ONLY the user's question.
+Answer ONLY the follow-up question.
 
-Do NOT regenerate the whole analysis.
+Do NOT regenerate the full chart analysis.
 
 Return JSON:
 
@@ -1496,6 +1549,26 @@ Return JSON:
             )
 
             result = json.loads(response.text)
+            memory[user_email][-1]["conversation"].append({
+
+                "role": "user",
+
+                "content": question
+
+            })
+
+            memory[user_email][-1]["conversation"].append({
+
+                "role": "assistant",
+
+                "content": result.get("answer", "")
+
+            })
+
+            _save_json(
+                "chart_memory.json",
+                memory
+            )
 
             return jsonify(result)
 
