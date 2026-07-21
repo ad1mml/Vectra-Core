@@ -39,7 +39,7 @@ import time
 import logging
 import secrets
 import hashlib
-
+from prompts.followup_prompt import FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
 from prompts.default_prompt import DEFAULT_PROMPT
 from prompts.pro_prompt import PRO_PROMPT
@@ -739,7 +739,38 @@ NEWS_SENTIMENT_PROMPT_TEMPLATE = (
     "-1.0 to 1.0), and 'analysis_reasoning' (a 2-sentence explanation).\n\n"
     "Headlines:\n{headlines}"
 )
+def _safe_json(response):
+    text = response.text.strip()
 
+    # Remove markdown fences if Gemini returns them
+    text = re.sub(r"^```json", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"^```", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
+
+    try:
+        return json.loads(text)
+
+    except Exception:
+
+        # One automatic repair attempt
+        repair_prompt = f"""
+Fix this JSON.
+
+Return ONLY valid JSON.
+
+{text}
+"""
+
+        repaired = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=repair_prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0
+            )
+        )
+
+        return json.loads(repaired.text)
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -1382,7 +1413,7 @@ USER REQUEST
 
             )
 
-            result = json.loads(response.text)
+            result = _safe_json(response)
 
             memory[user_email].append({
 
@@ -1472,7 +1503,7 @@ USER REQUEST
         if is_chart_followup:
 
             FOLLOWUP_PROMPT = f"""
-{ACTIVE_PROMPT}
+{FOLLOWUP_PROMPT_BASE}
 
 ==========================================================
 CURRENT ACTIVE CHART
@@ -1569,7 +1600,7 @@ Return JSON:
                 )
             )
 
-            result = json.loads(response.text)
+            result = _safe_json(response)
             memory[user_email][-1]["conversation"].append({
 
                 "role": "user",
@@ -1688,7 +1719,7 @@ Return JSON:
 
         )
 
-        result = json.loads(response.text)
+        result = _safe_json(response)
 
         return jsonify(result)
 
