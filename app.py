@@ -1288,8 +1288,13 @@ def analyze_chart():
 
             latest = memory[user_email][-1]
 
+            memory_source = latest.get("summary")
+
+            if memory_source is None:
+                memory_source = latest.get("analysis", {})
+
             previous_analysis = json.dumps(
-                latest["summary"],
+                memory_source,
                 indent=2
             )
             print("Previous summary length:", len(previous_analysis))
@@ -1443,11 +1448,8 @@ USER REQUEST
 
             )
 
-            summary = _safe_json(summary_response)
-            print("SUMMARY GENERATED:")
-            print(summary)
-            print(type(summary))
-
+            summary = _safe_json(summary_response) 
+            app.logger.error("SUMMARY CREATED SUCCESSFULLY")
             memory[user_email].append({
 
                 "timestamp": datetime.utcnow().isoformat(),
