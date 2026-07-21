@@ -472,7 +472,7 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
 # ---------------------------------------------------------------------------
 # Gemini call wrapper — retries transient overload errors
 # ---------------------------------------------------------------------------
-TRANSIENT_ERROR_MARKERS = ("UNAVAILABLE", "RESOURCE_EXHAUSTED", "503", "429", "overloaded")
+TRANSIENT_ERROR_MARKERS = ("UNAVAILABLE", "RESOURCE_EXHAUSTED", "503", "429", "overloaded", "DEADLINE_EXCEEDED", "504")
 
 
 def _is_transient_error(exc) -> bool:
@@ -491,13 +491,18 @@ def _make_gemini_contents(raw_contents):
     return parts
 
 
-def _generate_with_retry(model, contents, config=None, max_retries=2, base_delay=0.5, timeout_ms=15000):
+def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay=0.5, timeout_ms=45000):
     """
     Bounded retry logic. Each individual Gemini call is capped at
-    `timeout_ms` (default 15s — Gemini's minimum allowed deadline is
-    made with a short fixed backoff — this keeps the worst-case total
-    time for a single model well under PythonAnywhere's own request
-    timeout, instead of silently stacking up to minutes of retries.
+    `timeout_ms` (default 45s — large prompts like VIP's, especially with
+    an uploaded chart image, genuinely need more than the ~10-15s we
+    tried earlier; that was cutting off legitimate in-progress
+    generations, not just runaway ones). max_retries defaults to 1 (a
+    single attempt, no same-model retry) since the fallback model in
+    _analyze_generate/_generate_content_resilient now serves as the
+    "second try" — this keeps worst-case total time bounded to roughly
+    2x timeout_ms (primary + fallback) instead of stacking multiple
+    same-model retries on top of that.
     """
     last_exc = None
     start_total = time.perf_counter()
@@ -564,7 +569,7 @@ def _generate_content_resilient(contents, config=None):
             model=FALLBACK_MODEL_NAME,
             contents=gemini_contents,
             config=config,
-            max_retries=2
+            max_retries=1
         )
 
 
@@ -588,7 +593,7 @@ def _analyze_generate(model, contents, config=None):
             model=FALLBACK_MODEL_NAME,
             contents=contents,
             config=config,
-            max_retries=2
+            max_retries=1
         )
 
 
