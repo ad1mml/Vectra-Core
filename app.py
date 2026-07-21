@@ -98,11 +98,12 @@ PLAN_CONFIG = {
     "vip": {
         "temperature": 0.10,
         "top_p": 0.80,
-        # VIP's prompt is built around a deliberate multi-step reasoning
-        # framework (14-step VIP_REASONING sequence, confluence scoring,
-        # self-review, etc.) — "medium" keeps some of that depth while
-        # still being much faster than the "high" default.
-        "thinking_level": "medium"
+        # Dropped from "medium" to "low" — VIP's prompt is still huge (23
+        # modules), so even "medium" thinking was adding noticeable delay.
+        # "low" trades some of the step-by-step internal reasoning depth
+        # for real speed. The final JSON structure/fields are unaffected —
+        # this only affects how much the model deliberates before writing.
+        "thinking_level": "low"
     }
 }
 PLAN_MODELS = {
@@ -1342,6 +1343,11 @@ USER REQUEST
 
     top_p=PLAN_SETTINGS["top_p"],
 
+    # Caps how long the JSON response is allowed to be — generating
+    # output takes real time regardless of thinking_level, so this
+    # keeps responses from running unnecessarily long.
+    max_output_tokens=2048,
+
     thinking_config=types.ThinkingConfig(
         thinking_level=PLAN_SETTINGS["thinking_level"]
     )
@@ -1476,6 +1482,10 @@ Return JSON:
 
                     top_p=PLAN_SETTINGS["top_p"],
 
+                    # Follow-ups only return a short {"answer": ""} object,
+                    # so cap output tightly.
+                    max_output_tokens=512,
+
                     # Follow-ups are meant to be quick answers, not a full
                     # re-analysis, so force "low" here regardless of plan.
                     thinking_config=types.ThinkingConfig(
@@ -1571,6 +1581,10 @@ Return JSON:
                 temperature=PLAN_SETTINGS["temperature"],
 
                 top_p=PLAN_SETTINGS["top_p"],
+
+                # General answers are just {"answer": ""} — cap output
+                # length so a rambling answer can't add latency.
+                max_output_tokens=1024,
 
                 thinking_config=types.ThinkingConfig(
                     thinking_level=PLAN_SETTINGS["thinking_level"]
