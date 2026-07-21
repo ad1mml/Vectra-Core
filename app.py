@@ -40,6 +40,7 @@ import time
 import logging
 import secrets
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from prompts.followup_prompt import FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
 from prompts.default_prompt import DEFAULT_PROMPT
@@ -79,7 +80,7 @@ if not ADMIN_SECRET_KEY:
 
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY")  # powers /market-sentiment AND chat news lookups
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
-MODEL_NAME = os.environ.get("GEMINI_MODEL", "models/gemma-4-26b-a4b-it")
+MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 PLAN_CONFIG = {
     "default": {
         "temperature": 0.20,
@@ -113,11 +114,27 @@ PLAN_MODELS = {
     "pro": MODEL_NAME,
     "vip": MODEL_NAME
 }
-FALLBACK_MODEL_NAME = os.environ.get("GEMINI_FALLBACK_MODEL", "models/gemma-4-26b-a4b-it")
+FALLBACK_MODEL_NAME = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
 MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8MB upload cap
 MAX_HISTORY_PER_USER = 50
 NEWS_HEADLINE_LIMIT = 8
 NEWS_CACHE_TTL_SECONDS = 300  # avoid hammering Finnhub if several users ask in a row
+
+# Hard wall-clock ceiling on any single AI call, enforced in Python itself
+# (via a thread + future.result(timeout=...)) rather than relying only on
+# the SDK's own http_options timeout, which is a per-HTTP-call hint and not
+# a guarantee — it doesn't protect against the SDK hanging internally, and
+# it does nothing if something above your app (a host's own request/proxy
+# timeout) is the thing that eventually kills the connection. With this in
+# place, Flask always gets control back within HARD_DEADLINE_SECONDS and can
+# return a clean JSON error, instead of the user staring at a spinner for
+# minutes with nothing in the logs.
+HARD_DEADLINE_SECONDS = float(os.environ.get("AI_HARD_DEADLINE_SECONDS", "9.0"))
+# Per-attempt timeout inside _generate_with_retry. Kept short and well under
+# HARD_DEADLINE_SECONDS so that a primary-model attempt that times out still
+# leaves enough of the budget for a fallback-model attempt to run before the
+# hard deadline above cuts things off.
+PER_ATTEMPT_TIMEOUT_MS = int(os.environ.get("AI_PER_ATTEMPT_TIMEOUT_MS", "4000"))
 
 # Email verification — sends a 6-digit code via Brevo's email API before an
 # account is ever created. Brevo has a genuinely free tier (300 emails/day,
@@ -491,18 +508,25 @@ def _make_gemini_contents(raw_contents):
     return parts
 
 
-def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay=0.5, timeout_ms=45000):
+def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay=0.5, timeout_ms=PER_ATTEMPT_TIMEOUT_MS):
     """
     Bounded retry logic. Each individual Gemini call is capped at
-    `timeout_ms` (default 45s — large prompts like VIP's, especially with
-    an uploaded chart image, genuinely need more than the ~10-15s we
-    tried earlier; that was cutting off legitimate in-progress
-    generations, not just runaway ones). max_retries defaults to 1 (a
-    single attempt, no same-model retry) since the fallback model in
+    `timeout_ms` (default PER_ATTEMPT_TIMEOUT_MS, currently 4s). This used
+    to default to 45s, on the theory that large prompts (like VIP's) with
+    an uploaded chart image need more time — but that's what let a single
+    slow/overloaded call eat the user's entire response-time budget with
+    nothing to show for it. Speed now comes from using fast models
+    (gemini-2.5-flash-lite / gemini-2.5-flash) rather than from giving a
+    single attempt unlimited time. max_retries defaults to 1 (a single
+    attempt, no same-model retry) since the fallback model in
     _analyze_generate/_generate_content_resilient now serves as the
     "second try" — this keeps worst-case total time bounded to roughly
     2x timeout_ms (primary + fallback) instead of stacking multiple
-    same-model retries on top of that.
+    same-model retries on top of that. This per-attempt timeout is a
+    second layer of defense underneath the hard wall-clock deadline in
+    _analyze_generate — it exists so that, within that deadline, a
+    fallback attempt still has time to run instead of the whole budget
+    being burned by one hung primary call.
     """
     last_exc = None
     start_total = time.perf_counter()
@@ -551,50 +575,94 @@ def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay
     raise last_exc
 
 
-def _generate_content_resilient(contents, config=None):
-    """Primary model with fallback"""
+def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SECONDS):
+    """Primary model with fallback, under the same hard wall-clock deadline
+    as _analyze_generate — see that function's docstring for why this is
+    enforced with a future/thread rather than trusting the SDK's own
+    timeout."""
+    def _do_call():
+        try:
+            gemini_contents = _make_gemini_contents(contents)
+            return _generate_with_retry(
+                model=MODEL_NAME,
+                contents=gemini_contents,
+                config=config
+            )
+        except Exception as e:
+            if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == MODEL_NAME:
+                raise
+            app.logger.warning("Primary model overloaded — falling back to %s", FALLBACK_MODEL_NAME)
+            gemini_contents = _make_gemini_contents(contents)
+            return _generate_with_retry(
+                model=FALLBACK_MODEL_NAME,
+                contents=gemini_contents,
+                config=config,
+                max_retries=1
+            )
+
+    future = _analyze_executor.submit(_do_call)
     try:
-        gemini_contents = _make_gemini_contents(contents)
-        return _generate_with_retry(
-            model=MODEL_NAME,
-            contents=gemini_contents,
-            config=config
+        return future.result(timeout=deadline)
+    except FutureTimeoutError:
+        app.logger.error(
+            "market_sentiment: exceeded hard deadline of %.1fs — returning to "
+            "the user now instead of continuing to wait.",
+            deadline
         )
-    except Exception as e:
-        if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == MODEL_NAME:
-            raise
-        app.logger.warning("Primary model overloaded — falling back to %s", FALLBACK_MODEL_NAME)
-        gemini_contents = _make_gemini_contents(contents)
-        return _generate_with_retry(
-            model=FALLBACK_MODEL_NAME,
-            contents=gemini_contents,
-            config=config,
-            max_retries=1
-        )
+        raise TimeoutError(f"AI response exceeded the {deadline:.0f}s time budget.")
 
 
-def _analyze_generate(model, contents, config=None):
+# Dedicated pool for AI calls so a hard deadline can be enforced with
+# future.result(timeout=...). Using threads (not asyncio) keeps this a
+# drop-in wrapper around the existing synchronous SDK calls — no need to
+# rewrite the rest of the Flask app as async.
+_analyze_executor = ThreadPoolExecutor(max_workers=8)
+
+
+def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECONDS):
     """
     Same retry + fallback protection as _generate_content_resilient, but for
     /analyze-chart's three modes, whose `contents` lists are already built as
     proper SDK Parts/strings (chart bytes via Part.from_bytes, prompt text),
     so it skips the PIL-image conversion step and calls _generate_with_retry
     directly instead.
+
+    The whole primary-then-fallback attempt runs on a worker thread behind a
+    hard wall-clock deadline. If neither attempt finishes within `deadline`
+    seconds, this raises TimeoutError and control returns to Flask
+    immediately — regardless of what the SDK, the network, or Google's API
+    is doing. The abandoned request may keep running in the background on
+    its worker thread, but nothing waits on it any more, so the user always
+    gets a response (success or a clean error) within the deadline instead
+    of the connection eventually being killed by some outer layer with
+    nothing logged.
     """
+    def _do_call():
+        try:
+            return _generate_with_retry(model=model, contents=contents, config=config)
+        except Exception as e:
+            if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == model:
+                raise
+            app.logger.warning(
+                "analyze_chart: %s overloaded — falling back to %s", model, FALLBACK_MODEL_NAME
+            )
+            return _generate_with_retry(
+                model=FALLBACK_MODEL_NAME,
+                contents=contents,
+                config=config,
+                max_retries=1
+            )
+
+    future = _analyze_executor.submit(_do_call)
     try:
-        return _generate_with_retry(model=model, contents=contents, config=config)
-    except Exception as e:
-        if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == model:
-            raise
-        app.logger.warning(
-            "analyze_chart: %s overloaded — falling back to %s", model, FALLBACK_MODEL_NAME
+        return future.result(timeout=deadline)
+    except FutureTimeoutError:
+        app.logger.error(
+            "analyze_chart: %s exceeded hard deadline of %.1fs — returning to "
+            "the user now instead of continuing to wait.",
+            model, deadline
         )
-        return _generate_with_retry(
-            model=FALLBACK_MODEL_NAME,
-            contents=contents,
-            config=config,
-            max_retries=1
-        )
+        raise TimeoutError(f"AI response exceeded the {deadline:.0f}s time budget.")
 
 
 # ---------------------------------------------------------------------------
@@ -1028,6 +1096,8 @@ def market_sentiment():
 
     except json.JSONDecodeError:
         return jsonify({"error": "AI returned an unexpected format. Please try again."}), 502
+    except TimeoutError:
+        return jsonify({"error": "The AI took too long to respond — please try again."}), 504
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
@@ -1044,7 +1114,7 @@ def market_sentiment():
 def test_gemini():
     try:
         response = client.models.generate_content(
-            model="models/gemma-4-26b-a4b-it",
+            model=MODEL_NAME,
             contents="Say hello and return valid JSON: {'status':'ok','message':'hello'}",
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
@@ -1502,26 +1572,27 @@ USER REQUEST
             )
 
             result = _safe_json(response)
-            summary = {
-                "symbol": result.get("Symbol", ""),
-                "timeframe": result.get("Timeframe", ""),
-                "market_structure": result.get("Market Structure", ""),
-                "decision": result.get("Decision", ""),
-                "probability": result.get("Win probability", ""),
-                "final_word": result.get("Final Word", "")
-            }
 
-            decision = str(result.get("Decision", "")).upper()
-
-            if decision in ("BUY", "SELL"):
-                summary.update({
-                    "entry": result.get("Entry", ""),
-                    "take_profit": result.get("Take Profit", ""),
-                    "stop_loss": result.get("Stop Loss", ""),
-                    "execution": result.get("Execution", ""),
-                    "invalidation": result.get("Invalidation", "")
-                })
-           
+            # The three plans' JSON schemas (default_prompt.py, pro_json.py,
+            # vip_json.py) all use lowercase snake_case keys ("symbol",
+            # "decision", "entry", "take_profit", "stop_loss", ...) and each
+            # includes a different extra set of fields on top of that (VIP
+            # has probability/geopolitical fields, Pro has
+            # institutional_score, Default is bare-bones). The previous
+            # version of this block read Title Case keys — "Symbol",
+            # "Decision", "Win probability", "Entry", "Take Profit", "Stop
+            # Loss" — that don't exist in ANY of the three schemas, so
+            # `summary` was always just empty strings for every plan, and
+            # since previous_analysis below prefers `summary` over
+            # `analysis` whenever `summary` isn't None (and an all-empty
+            # dict still isn't None), that broken summary silently shadowed
+            # the real, full data sitting in `analysis` the whole time —
+            # which is why follow-up answers had nothing real to work with.
+            # Simplest correct fix: don't hand-pick fields at all, just
+            # store the parsed result as-is. It stays correct automatically
+            # no matter which fields a given plan's schema does or doesn't
+            # include.
+            summary = result
 
             app.logger.error("SUMMARY CREATED SUCCESSFULLY")
             memory[user_email].append({
@@ -1804,6 +1875,18 @@ Return JSON:
         result = _safe_json(response)
 
         return jsonify(result)
+
+    except TimeoutError as e:
+
+        app.logger.error("analyze_chart: hard deadline hit: %s", e)
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "The AI took too long to respond — please try again.",
+
+        }), 504
 
     except Exception as e:
 
