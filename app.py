@@ -1687,9 +1687,48 @@ USER REQUEST
 
         if is_chart_followup:
 
+            # Pro and VIP are allowed to discuss news/macro (per their own
+            # prompt files — vip_news/vip_macro modules, and Pro's
+            # intended news capability) — but until this fix, that
+            # capability only ever got wired in for Mode 1 (chart upload)
+            # and Mode 3 (general question with no prior chart). The
+            # moment a question became a follow-up (Mode 2 — by far the
+            # most common path in real usage), Pro and VIP silently lost
+            # all news access regardless of plan, which is why they were
+            # answering "I don't track real-time news" even though their
+            # own prompts say they can. Mirrors the same block used in
+            # Mode 3 below.
+            followup_news_block = ""
+            if plan in ("pro", "vip"):
+                followup_news_items = _fetch_news_headlines()
+                if followup_news_items:
+                    followup_news_block = f"""
+==========================================================
+LIVE NEWS CONTEXT (real headlines, fetched just now)
+==========================================================
+
+{_format_news_for_prompt(followup_news_items)}
+
+Treat the above as real, current, and correct. Use it if the
+follow-up question is about news, macro, or fundamentals.
+"""
+                else:
+                    followup_news_block = """
+==========================================================
+LIVE NEWS CONTEXT
+==========================================================
+
+Live news is not currently available (FINNHUB_KEY missing, or the
+news source failed to respond). If the user asks about news
+specifically, tell them plainly that live news isn't available
+right now rather than guessing or inventing headlines — but still
+answer any part of their question that's about the chart/technical
+picture.
+"""
+
             FOLLOWUP_PROMPT = f"""
 {FOLLOWUP_PROMPT_BASE}
-
+{followup_news_block}
 ==========================================================
 CURRENT ACTIVE CHART
 ==========================================================
