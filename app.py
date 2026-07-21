@@ -1444,6 +1444,9 @@ USER REQUEST
             )
 
             summary = _safe_json(summary_response)
+            print("SUMMARY GENERATED:")
+            print(summary)
+            print(type(summary))
 
             memory[user_email].append({
 
