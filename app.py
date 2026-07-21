@@ -533,6 +533,30 @@ def _generate_content_resilient(contents, config=None):
         )
 
 
+def _analyze_generate(model, contents, config=None):
+    """
+    Same retry + fallback protection as _generate_content_resilient, but for
+    /analyze-chart's three modes, whose `contents` lists are already built as
+    proper SDK Parts/strings (chart bytes via Part.from_bytes, prompt text),
+    so it skips the PIL-image conversion step and calls _generate_with_retry
+    directly instead.
+    """
+    try:
+        return _generate_with_retry(model=model, contents=contents, config=config)
+    except Exception as e:
+        if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == model:
+            raise
+        app.logger.warning(
+            "analyze_chart: %s overloaded — falling back to %s", model, FALLBACK_MODEL_NAME
+        )
+        return _generate_with_retry(
+            model=FALLBACK_MODEL_NAME,
+            contents=contents,
+            config=config,
+            max_retries=3
+        )
+
+
 # ---------------------------------------------------------------------------
 # Live news helpers
 # ---------------------------------------------------------------------------
@@ -1295,7 +1319,7 @@ USER REQUEST
 {question}
 """
 
-            response = client.models.generate_content(
+            response = _analyze_generate(
 
                 model=ACTIVE_MODEL,
 
@@ -1437,7 +1461,7 @@ Return JSON:
     "answer":""
 }}
 """
-            response = client.models.generate_content(
+            response = _analyze_generate(
 
                 model=ACTIVE_MODEL,
                 
@@ -1534,7 +1558,7 @@ Return JSON:
 }}
 """
 
-        response = client.models.generate_content(
+        response = _analyze_generate(
 
             model=ACTIVE_MODEL,
 
