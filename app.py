@@ -1423,35 +1423,20 @@ USER REQUEST
             )
 
             result = _safe_json(response)
-            summary_prompt = f"""
-            {MEMORY_SUMMARIZER}
+            summary = {
+                "asset": result.get("asset", ""),
+                "timeframe": result.get("timeframe", ""),
+                "bias": result.get("bias", ""),
+                "decision": result.get("decision", ""),
+                "entry": result.get("entry", ""),
+                "execution": result.get("execution", ""),
+                "tp": result.get("tp", ""),
+                "sl": result.get("sl", ""),
+                "probability": result.get("probability", ""),
+                "reason": result.get("reason", "")
+            }
+           
 
-            ==========================================================
-            FULL ANALYSIS
-            ==========================================================
-
-            {json.dumps(result, indent=2)}
-            """
-
-            summary_response = _analyze_generate(
-
-                model=ACTIVE_MODEL,
-
-                contents=[summary_prompt],
-
-                config=types.GenerateContentConfig(
-
-                    response_mime_type="application/json",
-
-                    temperature=0,
-
-                    max_output_tokens=300
- 
-                )
-
-            )
-
-            summary = _safe_json(summary_response) 
             app.logger.error("SUMMARY CREATED SUCCESSFULLY")
             memory[user_email].append({
 
