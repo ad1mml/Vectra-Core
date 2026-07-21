@@ -51,6 +51,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from datetime import datetime, timedelta
+from prompts.memory_summarizer import MEMORY_SUMMARIZER
 print("USING APP FILE:", __file__)
 
 # ---------------------------------------------------------------------------
@@ -1288,10 +1289,10 @@ def analyze_chart():
             latest = memory[user_email][-1]
 
             previous_analysis = json.dumps(
-                latest["analysis"],
+                latest["summary"],
                 indent=2
             )
-            print("Previous analysis length:", len(previous_analysis))
+            print("Previous summary length:", len(previous_analysis))
                
             previous_question = latest.get(
                 "question",
@@ -1414,6 +1415,35 @@ USER REQUEST
             )
 
             result = _safe_json(response)
+            summary_prompt = f"""
+            {MEMORY_SUMMARIZER}
+
+            ==========================================================
+            FULL ANALYSIS
+            ==========================================================
+
+            {json.dumps(result, indent=2)}
+            """
+
+            summary_response = _analyze_generate(
+
+                model=ACTIVE_MODEL,
+
+                contents=[summary_prompt],
+
+                config=types.GenerateContentConfig(
+
+                    response_mime_type="application/json",
+
+                    temperature=0,
+
+                    max_output_tokens=300
+ 
+                )
+
+            )
+
+            summary = _safe_json(summary_response)
 
             memory[user_email].append({
 
@@ -1422,6 +1452,7 @@ USER REQUEST
                 "question": question,
 
                 "analysis": result,
+                "summary": summary,
 
                 "conversation": [
                     {
