@@ -489,16 +489,31 @@ def _make_gemini_contents(raw_contents):
     return parts
 
 
-def _generate_with_retry(model, contents, config=None, max_retries=6, base_delay=2.0):
+def _generate_with_retry(model, contents, config=None, max_retries=3, base_delay=1.0):
     """Improved retry logic"""
     last_exc = None
+    start_total = time.perf_counter()
     for attempt in range(max_retries):
         try:
-            return client.models.generate_content(
+            start_request = time.perf_counter()
+
+            response = client.models.generate_content(
                 model=model,
                 contents=contents,
                 config=config
             )
+
+            request_time = time.perf_counter() - start_request
+            total_time = time.perf_counter() - start_total
+
+            app.logger.info(
+                "Gemini request completed | model=%s | request=%.2fs | total=%.2fs",
+                model,
+                request_time,
+                total_time
+            )
+
+            return response
         except Exception as e:
             last_exc = e
             if not _is_transient_error(e) or attempt == max_retries - 1:
