@@ -278,6 +278,38 @@
             font-weight: 600;
         }
 
+        .trade-levels-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px 20px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .trade-levels-grid .label {
+            display: block;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .trade-levels-grid .value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .trade-levels-grid .value.tp {
+            color: #2ecc71;
+        }
+
+        .trade-levels-grid .value.sl {
+            color: #ff3b30;
+        }
+
         .disclaimer-line {
             font-size: 0.75rem;
             color: var(--text-muted);
@@ -880,6 +912,11 @@
                     <h3>Decision</h3>
                     <div class="decision-value" id="rc-decision"></div>
                     <div class="probability-value" id="rc-probability"></div>
+                    <div class="trade-levels-grid" id="rc-trade-levels" style="display: none;">
+                        <div><span class="label">Entry</span><span class="value" id="rc-entry"></span></div>
+                        <div><span class="label">Take Profit</span><span class="value tp" id="rc-tp"></span></div>
+                        <div><span class="label">Stop Loss</span><span class="value sl" id="rc-sl"></span></div>
+                    </div>
                 </div>
                 <div class="chat-narrative-bubble">
                     <h3>Final Word</h3>
@@ -909,6 +946,17 @@
                     ? `Win probability: ${data.probability}%`
                     : '';
             viewport.querySelector('#rc-probability').textContent = probability;
+
+            const tradeLevels = viewport.querySelector('#rc-trade-levels');
+            const decisionUpper = (data.decision || '').toString().trim().toUpperCase();
+            if (decisionUpper === 'BUY' || decisionUpper === 'SELL') {
+                viewport.querySelector('#rc-entry').textContent = data.entry || 'N/A';
+                viewport.querySelector('#rc-tp').textContent = data.take_profit || 'N/A';
+                viewport.querySelector('#rc-sl').textContent = data.stop_loss || 'N/A';
+                tradeLevels.style.display = 'grid';
+            } else {
+                tradeLevels.style.display = 'none';
+            }
 
             viewport.querySelector('#rc-final').textContent =
                 data.reasoning || '';
