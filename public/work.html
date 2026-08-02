@@ -310,6 +310,58 @@
             color: #ff3b30;
         }
 
+        .wait-probability-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .wait-probability-grid .prob-box {
+            text-align: center;
+            padding: 10px 8px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.03);
+        }
+
+        .wait-probability-grid .prob-label {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .wait-probability-grid .prob-value {
+            font-size: 1.35rem;
+            font-weight: 800;
+        }
+
+        .wait-probability-grid .prob-box.buy .prob-value { color: #2ecc71; }
+        .wait-probability-grid .prob-box.sell .prob-value { color: #ff3b30; }
+
+        .wait-triggers {
+            margin-top: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .wait-triggers .trigger-line {
+            font-size: 0.88rem;
+            line-height: 1.4;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.03);
+            border-left: 3px solid var(--border-color);
+        }
+
+        .wait-triggers .trigger-line.buy { border-left-color: #2ecc71; }
+        .wait-triggers .trigger-line.sell { border-left-color: #ff3b30; }
+
         .disclaimer-line {
             font-size: 0.75rem;
             color: var(--text-muted);
@@ -899,67 +951,72 @@
                         <div><span class="label">Market Structure</span><span class="value" id="rc-structure"></span></div>
                     </div>
                 </div>
-                <div class="report-card">
-                    <h3>Structure & Levels</h3>
-                    <div class="field-row"><span class="label">Demand / Supply</span><span class="value" id="rc-ds"></span></div>
-                    <div class="field-row"><span class="label">Support / Resistance</span><span class="value" id="rc-sr"></span></div>
-                    <div class="field-row"><span class="label">Liquidity Sweep</span><span class="value" id="rc-liq"></span></div>
-                    <div class="field-row"><span class="label">Break of Structure</span><span class="value" id="rc-bos"></span></div>
-                    <div class="field-row"><span class="label">Fair Value Gaps</span><span class="value" id="rc-fvg"></span></div>
-                    <div class="field-row"><span class="label">Change of Character</span><span class="value" id="rc-choch"></span></div>
-                </div>
                 <div class="report-card" style="border-left: 4px solid var(--accent-color)">
                     <h3>Decision</h3>
                     <div class="decision-value" id="rc-decision"></div>
-                    <div class="probability-value" id="rc-probability"></div>
+
                     <div class="trade-levels-grid" id="rc-trade-levels" style="display: none;">
                         <div><span class="label">Entry</span><span class="value" id="rc-entry"></span></div>
                         <div><span class="label">Take Profit</span><span class="value tp" id="rc-tp"></span></div>
                         <div><span class="label">Stop Loss</span><span class="value sl" id="rc-sl"></span></div>
                     </div>
+
+                    <div id="rc-wait-block" style="display: none;">
+                        <div class="wait-probability-grid">
+                            <div class="prob-box buy">
+                                <span class="prob-label">Buy Probability</span>
+                                <span class="prob-value" id="rc-buy-prob"></span>
+                            </div>
+                            <div class="prob-box sell">
+                                <span class="prob-label">Sell Probability</span>
+                                <span class="prob-value" id="rc-sell-prob"></span>
+                            </div>
+                        </div>
+                        <div class="wait-triggers">
+                            <div class="trigger-line buy" id="rc-buy-trigger"></div>
+                            <div class="trigger-line sell" id="rc-sell-trigger"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="chat-narrative-bubble">
-                    <h3>Final Word</h3>
-                    <p id="rc-final"></p>
-                </div>
-                <p class="disclaimer-line">VectraCore provides analytical tooling, not financial advice. This is not a recommendation to buy or sell any asset.</p>
+                <p class="disclaimer-line">VectraCore provides analytical tooling, not financial advice. This is not a recommendation to buy or sell any asset. Ask a follow-up question anytime for the reasoning behind this call.</p>
             `;
-            console.log("rc-symbol element:", viewport.querySelector('#rc-symbol'));
-            console.log("RENDER FUNCTION RECEIVED:", data);
 
             viewport.querySelector('#rc-symbol').textContent = data.symbol || 'N/A';
             viewport.querySelector('#rc-timeframe').textContent = data.timeframe || 'N/A';
             viewport.querySelector('#rc-charttype').textContent = data.chart_type || 'N/A';
-            viewport.querySelector('#rc-structure').textContent = data.market_structure || 'N/A';
-
-            viewport.querySelector('#rc-ds').textContent = data.demand_supply || 'None';
-            viewport.querySelector('#rc-sr').textContent = data.support_resistance || 'None';
-            viewport.querySelector('#rc-liq').textContent = data.liquidity_sweep || 'None';
-            viewport.querySelector('#rc-bos').textContent =data.break_of_structure || 'None';
-            viewport.querySelector('#rc-fvg').textContent =data.fair_value_gap || 'None';
-            viewport.querySelector('#rc-choch').textContent = data.change_of_character || 'N/A';
+            viewport.querySelector('#rc-structure').textContent =
+                data.market_structure_simple || data.market_structure || 'N/A';
 
             viewport.querySelector('#rc-decision').textContent = data.decision || 'N/A';
-            const probability =
-                data.probability !== undefined &&
-                data.probability !== null
-                    ? `Win probability: ${data.probability}%`
-                    : '';
-            viewport.querySelector('#rc-probability').textContent = probability;
 
             const tradeLevels = viewport.querySelector('#rc-trade-levels');
+            const waitBlock = viewport.querySelector('#rc-wait-block');
             const decisionUpper = (data.decision || '').toString().trim().toUpperCase();
+
             if (decisionUpper === 'BUY' || decisionUpper === 'SELL') {
                 viewport.querySelector('#rc-entry').textContent = data.entry || 'N/A';
                 viewport.querySelector('#rc-tp').textContent = data.take_profit || 'N/A';
                 viewport.querySelector('#rc-sl').textContent = data.stop_loss || 'N/A';
                 tradeLevels.style.display = 'grid';
+                waitBlock.style.display = 'none';
             } else {
                 tradeLevels.style.display = 'none';
+
+                const buyProb = data.buy_probability;
+                const sellProb = data.sell_probability;
+                viewport.querySelector('#rc-buy-prob').textContent =
+                    (buyProb !== undefined && buyProb !== null) ? `${buyProb}%` : 'N/A';
+                viewport.querySelector('#rc-sell-prob').textContent =
+                    (sellProb !== undefined && sellProb !== null) ? `${sellProb}%` : 'N/A';
+
+                viewport.querySelector('#rc-buy-trigger').textContent =
+                    data.buy_trigger || 'No clear buy trigger yet — check back after the next candle closes.';
+                viewport.querySelector('#rc-sell-trigger').textContent =
+                    data.sell_trigger || 'No clear sell trigger yet — check back after the next candle closes.';
+
+                waitBlock.style.display = 'block';
             }
 
-            viewport.querySelector('#rc-final').textContent =
-                data.reasoning || '';
             return;    
         }
 

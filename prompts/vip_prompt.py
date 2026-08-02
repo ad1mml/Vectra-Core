@@ -13,16 +13,19 @@ Committee rather than deciding anything themselves. Order:
   4. MARKET REGIME             -> reads both clusters above
   5. RISK                      -> assesses the whole picture so far
   6. EXECUTION                 -> trade timing/entry mechanics
-  7. VALIDATION COMMITTEE      -> validator -> self-review (each
+  7. SL / TP MASTERY           -> institutional stop/target placement,
+                                   fed by execution, read by risk/
+                                   validation below
+  8. VALIDATION COMMITTEE      -> validator -> self-review (each
                                    explicitly receives every specialist
                                    above)
-  8. DECISION COMMITTEE        -> decision -> confluence score ->
+  9. DECISION COMMITTEE        -> decision -> confluence score ->
                                    probability (each explicitly receives
                                    the validation committee's output too)
-  9. CONTINUITY & COACHING     -> memory -> coach
- 10. RULES RECAP               -> non-negotiable meta-rules, right
+ 10. CONTINUITY & COACHING     -> memory -> coach
+ 11. RULES RECAP               -> non-negotiable meta-rules, right
                                    before output
- 11. OUTPUT FORMAT             -> JSON schema, always last
+ 12. OUTPUT FORMAT             -> JSON schema, always last
 
 Each module is its own file under prompts/ so it can be tuned
 independently without touching this file.
@@ -55,23 +58,26 @@ from prompts.vip_risk import VIP_RISK
 # 6. Execution — trade timing/entry mechanics
 from prompts.vip_execution import VIP_EXECUTION
 
-# 7. Validation committee
+# 7. SL / TP mastery — institutional stop/target placement
+from prompts.vip_TPSL import VIP_TPSL
+
+# 8. Validation committee
 from prompts.vip_validator import VIP_VALIDATOR
 from prompts.vip_self_review import VIP_SELF_REVIEW
 
-# 8. Decision committee
+# 9. Decision committee
 from prompts.vip_decision import VIP_DECISION
 from prompts.vip_score import VIP_SCORE
 from prompts.vip_probability import VIP_PROBABILITY
 
-# 9. Continuity & coaching
+# 10. Continuity & coaching
 from prompts.vip_memory import VIP_MEMORY
 from prompts.vip_coach import VIP_COACH
 
-# 10. Rules recap
+# 11. Rules recap
 from prompts.vip_rules import VIP_RULES
 
-# 11. Output format — always last
+# 12. Output format — always last
 from prompts.vip_json import VIP_JSON
 
 
@@ -101,6 +107,7 @@ Primary specialists:
 • Order Flow
 • Market Regime
 • Risk
+• SL / TP Mastery
 • Validator
 • Decision
 
@@ -185,6 +192,12 @@ EXECUTION
 {VIP_EXECUTION}
 
 ==========================================================
+SL / TP MASTERY
+==========================================================
+
+{VIP_TPSL}
+
+==========================================================
 VALIDATION COMMITTEE
 ==========================================================
 
@@ -222,3 +235,4 @@ OUTPUT FORMAT (always follow this exactly)
 
 {VIP_JSON}
 """
+
