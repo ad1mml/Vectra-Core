@@ -197,6 +197,36 @@
 
         .response-viewport { flex: 1; padding: 30px; }
 
+        .thread-user-bubble {
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--text-muted);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 12px;
+            font-size: 0.88rem;
+            color: var(--text-main);
+        }
+
+        .thread-user-bubble .thread-user-label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .thread-day-divider {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin: 10px 0 18px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
         .report-card {
             background-color: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -511,37 +541,137 @@
             transform: translateY(-1px);
         }
 
-        .history-section {
-            padding: 30px;
-            border-top: 1px solid var(--border-color);
+        /* ===================== RECENTS SIDEBAR ===================== */
+        .recents-sidebar {
+            width: 260px;
+            min-width: 260px;
             background-color: var(--panel-bg);
-        }
-
-        .run-history-element {
-            padding: 12px;
-            background-color: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            margin-top: 10px;
-            cursor: pointer;
-            font-size: 0.85rem;
-        }
-
-        .run-history-element:hover { background-color: rgba(255, 59, 48, 0.05); }
-
-        .history-topline {
+            border-right: 1px solid var(--border-color);
             display: flex;
-            justify-content: space-between;
-            color: var(--text-muted);
-            margin-bottom: 6px;
+            flex-direction: column;
+            overflow: hidden;
+            transition: width 0.2s ease, min-width 0.2s ease;
         }
 
-        .history-question {
-            color: #fff;
-            font-weight: 600;
-            text-overflow: ellipsis;
+        .recents-sidebar.collapsed {
+            width: 56px;
+            min-width: 56px;
+        }
+
+        .recents-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 12px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .recents-toggle-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            transition: all 0.15s;
+        }
+
+        .recents-toggle-btn:hover { color: var(--text-main); border-color: var(--text-muted); }
+
+        .recents-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--text-muted);
             white-space: nowrap;
             overflow: hidden;
+        }
+
+        .recents-sidebar.collapsed .recents-title,
+        .recents-sidebar.collapsed .recents-body { display: none; }
+
+        .recents-new-btn {
+            margin: 12px;
+            padding: 10px 12px;
+            background-color: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.35);
+            color: var(--text-main);
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+
+        .recents-new-btn:hover { background-color: rgba(255, 59, 48, 0.18); }
+
+        .recents-sidebar.collapsed .recents-new-btn {
+            margin: 12px 8px;
+            text-align: center;
+            padding: 8px 0;
+        }
+
+        .recents-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 8px 12px;
+        }
+
+        .recents-day-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            padding: 14px 8px 6px;
+        }
+
+        .recents-item {
+            padding: 9px 10px;
+            border-radius: 6px;
+            font-size: 0.83rem;
+            color: var(--text-main);
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+            transition: background-color 0.15s;
+        }
+
+        .recents-item:hover { background-color: rgba(255, 255, 255, 0.06); }
+
+        .recents-item.active {
+            background-color: rgba(255, 59, 48, 0.15);
+            color: var(--accent-color);
+            font-weight: 600;
+        }
+
+        .recents-empty, .recents-locked {
+            padding: 16px 10px;
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .recents-locked a {
+            color: var(--accent-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .thread-turn-marker {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            padding: 6px 30px;
+            font-style: italic;
         }
 
         .feedback-overlay {
@@ -742,6 +872,17 @@
 
     <div class="workspace-container">
 
+        <div class="recents-sidebar" id="recents-sidebar">
+            <div class="recents-header">
+                <span class="recents-title">Recents</span>
+                <button class="recents-toggle-btn" id="recents-toggle-btn" title="Collapse">&#8676;</button>
+            </div>
+            <button class="recents-new-btn" id="recents-new-btn" title="New analysis">+ New Analysis</button>
+            <div class="recents-body" id="recents-body">
+                <p class="recents-empty">Loading…</p>
+            </div>
+        </div>
+
         <div class="ai-inputs-panel">
             <div>
                 <div class="panel-title"> VectraCore Terminal Inputs</div>
@@ -776,13 +917,6 @@
                     Enter an analytical directive or upload a screenshot. VectraCore deep learning engine will render structural, technical, and macro results inside this space.
                 </div>
             </div>
-
-            <div class="history-section">
-                <div class="panel-title" style="margin-bottom: 10px;">Saved Analysis History</div>
-                <div id="history-container">
-                    <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 10px 0;">Loading history...</p>
-                </div>
-            </div>
         </div>
 
     </div>
@@ -813,6 +947,10 @@
             : 'http://127.0.0.1:5000';
 
         const activeProfile = localStorage.getItem('vectracore_user_email') || 'guest@vectracore.ai';
+        const currentPlan = localStorage.getItem('vectracore_plan') || 'default';
+        const sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
+        let currentSessionId = null;
+
         document.getElementById('current-user').textContent = activeProfile;
         document.getElementById('feedback-sender-email').value =
             activeProfile === 'guest@vectracore.ai' ? '' : activeProfile;
@@ -848,7 +986,10 @@
             const packet = new FormData();
             packet.append('user_email', activeProfile);
             packet.append('question', promptValue);
-            packet.append('plan',localStorage.getItem('vectracore_plan') || 'default');
+            packet.append('plan', currentPlan);
+            if (sessionsEnabled && currentSessionId) {
+                packet.append('session_id', currentSessionId);
+            }
             if (uploadedImage) {
                 packet.append('chart', uploadedImage);
             }
@@ -881,7 +1022,6 @@
                 if (!response.ok) {
                     if (result.upgrade_required) {
                         renderUpgradeAlert(result);
-                        await loadHistory();
                         submissionForm.reset();
                         fileLabelText.textContent = "Choose File / Drag & Drop Image Here";
                         fileLabelText.style.color = 'var(--text-muted)';
@@ -890,8 +1030,19 @@
                     throw new Error(result.error || `Server responded with status code: ${response.status}`);
                 }
 
-                renderAIResponse(result);
-                await loadHistory();
+                if (result.session_id) {
+                    currentSessionId = result.session_id;
+                }
+
+                if (sessionsEnabled && currentSessionId) {
+                    // Pro/VIP: replay the full thread from the server so the
+                    // viewport always matches exactly what's saved (and what
+                    // reopening this session from Recents will show later).
+                    await openSession(currentSessionId, { fallback: result });
+                    await loadSessions();
+                } else {
+                    renderAIResponse(result);
+                }
 
                 // Reset the form for the next query
                 submissionForm.reset();
@@ -907,117 +1058,90 @@
             }
         });
 
-        function renderAIResponse(data) {
-            console.log("RENDER FUNCTION RECEIVED:", data);
-
-            if (data.upgrade_required) {
-                renderUpgradeAlert(data);
-                return;
-            }
-
-            const viewport = document.getElementById('ai-response-viewport');
+        // Builds the HTML for one assistant "turn" — a plain text answer, a
+        // text-only brief, or a full chart report card. Used both for the
+        // single-shot view (renderAIResponse) and for replaying a whole
+        // reopened session (renderSessionTurns), so the two never drift.
+        function buildAssistantTurnHTML(data) {
             if (data.answer) {
-                viewport.innerHTML = `
+                return `
                     <div class="chat-narrative-bubble">
                         <h3>VectraCore Response</h3>
-                        <p id="chat-answer"></p>
+                        <p>${escapeHtml(data.answer)}</p>
                     </div>
                 `;
-
-                document.getElementById('chat-answer').textContent = data.answer;
-                return;
             }
-              
-
 
             if (data.fundamental_analysis === "TEXT_ONLY_MODE") {
-                
-                viewport.innerHTML = `
+                return `
                     <div class="chat-narrative-bubble">
                         <h3>VectraCore Analytical Brief</h3>
-                        <p></p>
+                        <p>${escapeHtml(data.technical_analysis || '')}</p>
                     </div>
                 `;
-                viewport.querySelector('p').textContent = data.technical_analysis || '';
-                return;
             }
 
-            viewport.innerHTML = `
+            const decisionUpper = (data.decision || '').toString().trim().toUpperCase();
+            const isTrade = decisionUpper === 'BUY' || decisionUpper === 'SELL';
+
+            const tradeLevelsHTML = isTrade ? `
+                        <div class="trade-levels-grid">
+                            <div><span class="label">Entry</span><span class="value">${escapeHtml(data.entry || 'N/A')}</span></div>
+                            <div><span class="label">Take Profit</span><span class="value tp">${escapeHtml(data.take_profit || 'N/A')}</span></div>
+                            <div><span class="label">Stop Loss</span><span class="value sl">${escapeHtml(data.stop_loss || 'N/A')}</span></div>
+                        </div>
+            ` : `
+                        <div>
+                            <div class="wait-probability-grid">
+                                <div class="prob-box buy">
+                                    <span class="prob-label">Buy Probability</span>
+                                    <span class="prob-value">${(data.buy_probability ?? data.buy_probability === 0) ? data.buy_probability + '%' : 'N/A'}</span>
+                                </div>
+                                <div class="prob-box sell">
+                                    <span class="prob-label">Sell Probability</span>
+                                    <span class="prob-value">${(data.sell_probability ?? data.sell_probability === 0) ? data.sell_probability + '%' : 'N/A'}</span>
+                                </div>
+                            </div>
+                            <div class="wait-triggers">
+                                <div class="trigger-line buy">${escapeHtml(data.buy_trigger || 'No clear buy trigger yet — check back after the next candle closes.')}</div>
+                                <div class="trigger-line sell">${escapeHtml(data.sell_trigger || 'No clear sell trigger yet — check back after the next candle closes.')}</div>
+                            </div>
+                        </div>
+            `;
+
+            return `
                 <div class="report-card">
                     <div class="snapshot-grid">
-                        <div><span class="label">Symbol</span><span class="value" id="rc-symbol"></span></div>
-                        <div><span class="label">Timeframe</span><span class="value" id="rc-timeframe"></span></div>
-                        <div><span class="label">Chart Type</span><span class="value" id="rc-charttype"></span></div>
-                        <div><span class="label">Market Structure</span><span class="value" id="rc-structure"></span></div>
+                        <div><span class="label">Symbol</span><span class="value">${escapeHtml(data.symbol || 'N/A')}</span></div>
+                        <div><span class="label">Timeframe</span><span class="value">${escapeHtml(data.timeframe || 'N/A')}</span></div>
+                        <div><span class="label">Chart Type</span><span class="value">${escapeHtml(data.chart_type || 'N/A')}</span></div>
+                        <div><span class="label">Market Structure</span><span class="value">${escapeHtml(data.market_structure_simple || data.market_structure || 'N/A')}</span></div>
                     </div>
                 </div>
                 <div class="report-card" style="border-left: 4px solid var(--accent-color)">
                     <h3>Decision</h3>
-                    <div class="decision-value" id="rc-decision"></div>
-
-                    <div class="trade-levels-grid" id="rc-trade-levels" style="display: none;">
-                        <div><span class="label">Entry</span><span class="value" id="rc-entry"></span></div>
-                        <div><span class="label">Take Profit</span><span class="value tp" id="rc-tp"></span></div>
-                        <div><span class="label">Stop Loss</span><span class="value sl" id="rc-sl"></span></div>
-                    </div>
-
-                    <div id="rc-wait-block" style="display: none;">
-                        <div class="wait-probability-grid">
-                            <div class="prob-box buy">
-                                <span class="prob-label">Buy Probability</span>
-                                <span class="prob-value" id="rc-buy-prob"></span>
-                            </div>
-                            <div class="prob-box sell">
-                                <span class="prob-label">Sell Probability</span>
-                                <span class="prob-value" id="rc-sell-prob"></span>
-                            </div>
-                        </div>
-                        <div class="wait-triggers">
-                            <div class="trigger-line buy" id="rc-buy-trigger"></div>
-                            <div class="trigger-line sell" id="rc-sell-trigger"></div>
-                        </div>
-                    </div>
+                    <div class="decision-value">${escapeHtml(data.decision || 'N/A')}</div>
+                    ${tradeLevelsHTML}
                 </div>
                 <p class="disclaimer-line">VectraCore provides analytical tooling, not financial advice. This is not a recommendation to buy or sell any asset. Ask a follow-up question anytime for the reasoning behind this call.</p>
             `;
+        }
 
-            viewport.querySelector('#rc-symbol').textContent = data.symbol || 'N/A';
-            viewport.querySelector('#rc-timeframe').textContent = data.timeframe || 'N/A';
-            viewport.querySelector('#rc-charttype').textContent = data.chart_type || 'N/A';
-            viewport.querySelector('#rc-structure').textContent =
-                data.market_structure_simple || data.market_structure || 'N/A';
+        function buildUserTurnHTML(label, text) {
+            return `
+                <div class="thread-user-bubble">
+                    <span class="thread-user-label">${escapeHtml(label)}</span>
+                    ${escapeHtml(text || '')}
+                </div>
+            `;
+        }
 
-            viewport.querySelector('#rc-decision').textContent = data.decision || 'N/A';
-
-            const tradeLevels = viewport.querySelector('#rc-trade-levels');
-            const waitBlock = viewport.querySelector('#rc-wait-block');
-            const decisionUpper = (data.decision || '').toString().trim().toUpperCase();
-
-            if (decisionUpper === 'BUY' || decisionUpper === 'SELL') {
-                viewport.querySelector('#rc-entry').textContent = data.entry || 'N/A';
-                viewport.querySelector('#rc-tp').textContent = data.take_profit || 'N/A';
-                viewport.querySelector('#rc-sl').textContent = data.stop_loss || 'N/A';
-                tradeLevels.style.display = 'grid';
-                waitBlock.style.display = 'none';
-            } else {
-                tradeLevels.style.display = 'none';
-
-                const buyProb = data.buy_probability;
-                const sellProb = data.sell_probability;
-                viewport.querySelector('#rc-buy-prob').textContent =
-                    (buyProb !== undefined && buyProb !== null) ? `${buyProb}%` : 'N/A';
-                viewport.querySelector('#rc-sell-prob').textContent =
-                    (sellProb !== undefined && sellProb !== null) ? `${sellProb}%` : 'N/A';
-
-                viewport.querySelector('#rc-buy-trigger').textContent =
-                    data.buy_trigger || 'No clear buy trigger yet — check back after the next candle closes.';
-                viewport.querySelector('#rc-sell-trigger').textContent =
-                    data.sell_trigger || 'No clear sell trigger yet — check back after the next candle closes.';
-
-                waitBlock.style.display = 'block';
+        function renderAIResponse(data) {
+            if (data.upgrade_required) {
+                renderUpgradeAlert(data);
+                return;
             }
-
-            return;    
+            document.getElementById('ai-response-viewport').innerHTML = buildAssistantTurnHTML(data);
         }
 
         function renderError(message) {
@@ -1124,43 +1248,139 @@
             return div.innerHTML;
         }
 
-        // Pull the user's real saved history from the backend instead of a
-        // placeholder that resets on refresh.
-        async function loadHistory() {
-            const container = document.getElementById('history-container');
-            try {
-                const response = await fetch(`${API_BASE_URL}/history?email=${encodeURIComponent(activeProfile)}`);
-                if (!response.ok) throw new Error('Could not load history');
-                const entries = await response.json();
+        // =====================================================
+        // RECENTS SIDEBAR — Pro/VIP only. Lists past analysis
+        // threads (sessions) grouped by day, lets the user reopen
+        // one and keep chatting/uploading in it, or start fresh.
+        // =====================================================
 
-                if (!entries.length) {
-                    container.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 10px 0;">No history logs detected for this session profile.</p>`;
+        const recentsSidebar = document.getElementById('recents-sidebar');
+        const recentsBody = document.getElementById('recents-body');
+        const recentsToggleBtn = document.getElementById('recents-toggle-btn');
+        const recentsNewBtn = document.getElementById('recents-new-btn');
+
+        function dayLabelFor(isoString) {
+            if (!isoString) return 'Earlier';
+            const date = new Date(isoString);
+            if (isNaN(date)) return 'Earlier';
+
+            const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            const today = startOfDay(new Date());
+            const target = startOfDay(date);
+            const diffDays = Math.round((today - target) / 86400000);
+
+            if (diffDays === 0) return 'Today';
+            if (diffDays === 1) return 'Yesterday';
+            return date.toLocaleDateString('en-GB'); // DD/MM/YYYY
+        }
+
+        function renderSessionsList(sessions) {
+            if (!sessions.length) {
+                recentsBody.innerHTML = `<p class="recents-empty">No past analyses yet. Run one and it'll show up here.</p>`;
+                return;
+            }
+
+            const groups = [];
+            const groupIndex = {};
+            sessions.forEach(s => {
+                const label = dayLabelFor(s.updated_at || s.created_at);
+                if (!(label in groupIndex)) {
+                    groupIndex[label] = [];
+                    groups.push({ label, items: groupIndex[label] });
+                }
+                groupIndex[label].push(s);
+            });
+
+            recentsBody.innerHTML = groups.map(g => `
+                <div class="recents-day-label">${escapeHtml(g.label)}</div>
+                ${g.items.map(s => `
+                    <div class="recents-item${s.id === currentSessionId ? ' active' : ''}" data-session-id="${escapeHtml(s.id)}" title="${escapeHtml(s.title)}">
+                        ${escapeHtml(s.title)}
+                    </div>
+                `).join('')}
+            `).join('');
+
+            recentsBody.querySelectorAll('.recents-item').forEach(node => {
+                node.addEventListener('click', () => openSession(node.dataset.sessionId));
+            });
+        }
+
+        async function loadSessions() {
+            if (!sessionsEnabled) {
+                recentsBody.innerHTML = `<p class="recents-locked">Chat history &amp; recents are a <a href="pricing.html">Pro / VIP</a> feature.</p>`;
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE_URL}/sessions?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
+                if (response.status === 403) {
+                    recentsBody.innerHTML = `<p class="recents-locked">Chat history &amp; recents are a <a href="pricing.html">Pro / VIP</a> feature.</p>`;
                     return;
                 }
-
-                container.innerHTML = entries.slice(0, 10).map(entry => `
-                    <div class="run-history-element">
-                        <div class="history-topline">
-                            <span></span>
-                            <span></span>
-                        </div>
-                        <div class="history-question"></div>
-                    </div>
-                `).join('');
-
-                const nodes = container.querySelectorAll('.run-history-element');
-                entries.slice(0, 10).forEach((entry, i) => {
-                    const node = nodes[i];
-                    node.querySelector('.history-topline span:first-child').textContent = activeProfile;
-                    node.querySelector('.history-topline span:last-child').textContent = entry.timestamp || '';
-                    node.querySelector('.history-question').textContent = entry.question || '(chart-only analysis)';
-                });
+                if (!response.ok) throw new Error('Could not load sessions');
+                renderSessionsList(await response.json());
             } catch (err) {
-                container.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 10px 0;">Could not load history.</p>`;
+                recentsBody.innerHTML = `<p class="recents-empty">Could not load recents.</p>`;
             }
         }
 
-        loadHistory();
+        // Reopens a past session and replays every turn in order in the
+        // main viewport, exactly like scrolling up in a chat app — except
+        // you jump straight to it from the sidebar instead of scrolling.
+        // `fallback` lets the caller pass the response it already has so we
+        // don't need an extra round-trip right after analyze-chart returns.
+        async function openSession(sessionId, { fallback } = {}) {
+            if (!sessionsEnabled || !sessionId) return;
+            currentSessionId = sessionId;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(sessionId)}?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
+                if (!response.ok) throw new Error('Could not load session');
+                const session = await response.json();
+
+                const viewport = document.getElementById('ai-response-viewport');
+                viewport.innerHTML = (session.turns || []).map(turn => {
+                    if (turn.role === 'user') {
+                        const label = turn.type === 'chart' ? 'Chart uploaded' : 'You asked';
+                        return buildUserTurnHTML(label, turn.content);
+                    }
+                    if (turn.type === 'analysis') {
+                        return buildAssistantTurnHTML(turn.content || {});
+                    }
+                    return buildAssistantTurnHTML({ answer: turn.content });
+                }).join('');
+                viewport.scrollTop = viewport.scrollHeight;
+
+                recentsBody.querySelectorAll('.recents-item').forEach(node => {
+                    node.classList.toggle('active', node.dataset.sessionId === sessionId);
+                });
+            } catch (err) {
+                if (fallback) {
+                    renderAIResponse(fallback);
+                } else {
+                    renderError('Could not load that analysis.');
+                }
+            }
+        }
+
+        recentsToggleBtn.addEventListener('click', () => {
+            const collapsed = recentsSidebar.classList.toggle('collapsed');
+            recentsToggleBtn.innerHTML = collapsed ? '&#8677;' : '&#8676;';
+        });
+
+        recentsNewBtn.addEventListener('click', () => {
+            currentSessionId = null;
+            document.getElementById('ai-response-viewport').innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); margin-top: 80px; font-size: 0.9rem; padding: 30px;">
+                    Enter an analytical directive or upload a screenshot. VectraCore deep learning engine will render structural, technical, and macro results inside this space.
+                </div>
+            `;
+            submissionForm.reset();
+            fileLabelText.textContent = "Choose File / Drag & Drop Image Here";
+            fileLabelText.style.color = 'var(--text-muted)';
+            recentsBody.querySelectorAll('.recents-item.active').forEach(n => n.classList.remove('active'));
+        });
+
+        loadSessions();
 
         // --- FEEDBACK WINDOW CONTROLS ---
         const feedbackModal = document.getElementById('feedback-modal');

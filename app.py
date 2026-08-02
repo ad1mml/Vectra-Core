@@ -40,6 +40,7 @@ import time
 import logging
 import secrets
 import hashlib
+import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from prompts.followup_prompt import FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
@@ -197,6 +198,124 @@ USERS_FILE = os.path.join(DATA_DIR, "users.json")
 PENDING_FILE = os.path.join(DATA_DIR, "pending_verifications.json")
 
 VALID_PLANS = ("default", "pro", "vip")
+
+# Only these plans can list/reopen past analysis sessions (the "Recents"
+# sidebar). Default plan still gets normal single-turn analysis + follow-ups,
+# it just doesn't get a session_id back / a sidebar to browse.
+SESSION_PLANS = ("pro", "vip")
+
+CHART_MEMORY_FILE = "chart_memory.json"
+
+
+# ---------------------------------------------------------------------------
+# Session helpers — "chart_memory.json" stores, per user email, a list of
+# sessions. Each session is one continuous thread (either started by a chart
+# upload, or by a standalone question) and holds an ordered list of turns so
+# it can be replayed exactly like a chat history:
+#
+#   {
+#     "id": "…",
+#     "created_at": "…", "updated_at": "…",
+#     "symbol": "EURUSD" | None, "timeframe": "5m" | None,
+#     "title": "EURUSD 5m" | "why should I enter now?",
+#     "plan": "pro",
+#     "turns": [
+#        {"role": "user", "type": "chart", "content": "<question text>", "timestamp": "…"},
+#        {"role": "assistant", "type": "analysis", "content": {...full result...}, "timestamp": "…"},
+#        {"role": "user", "type": "text", "content": "why should I enter now?", "timestamp": "…"},
+#        {"role": "assistant", "type": "text", "content": "…", "timestamp": "…"}
+#     ]
+#   }
+#
+# A chart upload with no session_id (or one that doesn't match anything)
+# starts a brand new session. A chart upload or question WITH a matching
+# session_id continues that session and gives the model that session's own
+# history as context — never another session's.
+# ---------------------------------------------------------------------------
+
+def _migrate_legacy_session(entry):
+    """Old chart_memory.json entries (one per chart, with 'analysis' /
+    'summary' / 'conversation' keys, no 'id') get converted on read into the
+    new turn-based session shape, so nothing existing gets silently dropped
+    once this ships."""
+    if "turns" in entry:
+        return entry
+
+    timestamp = entry.get("timestamp") or datetime.utcnow().isoformat()
+    analysis = entry.get("analysis") or {}
+    turns = []
+
+    conversation = entry.get("conversation")
+    if conversation:
+        for i, msg in enumerate(conversation):
+            turn_type = "analysis" if (i == 1 and msg.get("role") == "assistant" and analysis) else "text"
+            content = analysis if turn_type == "analysis" else msg.get("content", "")
+            turns.append({
+                "role": msg.get("role", "user"),
+                "type": turn_type,
+                "content": content,
+                "timestamp": timestamp,
+            })
+    elif analysis:
+        turns.append({"role": "user", "type": "chart", "content": entry.get("question", ""), "timestamp": timestamp})
+        turns.append({"role": "assistant", "type": "analysis", "content": analysis, "timestamp": timestamp})
+
+    symbol = analysis.get("symbol") if isinstance(analysis, dict) else None
+    timeframe = analysis.get("timeframe") if isinstance(analysis, dict) else None
+
+    return {
+        "id": uuid.uuid4().hex,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "title": _session_title(symbol, timeframe, entry.get("question", "")),
+        "plan": entry.get("plan", "default"),
+        "turns": turns,
+    }
+
+
+def _session_title(symbol, timeframe, question):
+    if symbol:
+        tf = f" {timeframe}" if timeframe else ""
+        return f"{symbol}{tf}"
+    q = (question or "").strip()
+    if not q:
+        return "New conversation"
+    return q if len(q) <= 40 else q[:40].rstrip() + "…"
+
+
+def _load_sessions(user_email):
+    memory = _load_json(CHART_MEMORY_FILE, {})
+    raw = memory.get(user_email, [])
+    sessions = [_migrate_legacy_session(e) for e in raw]
+    return memory, sessions
+
+
+def _find_session(sessions, session_id):
+    if not session_id:
+        return None
+    for s in sessions:
+        if s.get("id") == session_id:
+            return s
+    return None
+
+
+def _session_last_analysis(session):
+    if not session:
+        return None
+    for turn in reversed(session.get("turns", [])):
+        if turn.get("role") == "assistant" and turn.get("type") == "analysis":
+            return turn.get("content")
+    return None
+
+
+def _session_conversation_text(session, limit=10):
+    if not session:
+        return ""
+    text_turns = [t for t in session.get("turns", []) if t.get("type") == "text"]
+    recent = text_turns[-limit:]
+    return "\n".join(f'{t["role"].upper()}: {t["content"]}' for t in recent)
 
 
 def _load_json(path, default):
@@ -1104,6 +1223,58 @@ def get_history():
 
 
 
+@app.route("/sessions", methods=["GET"])
+def list_sessions():
+    """Powers the Recents sidebar. Pro/VIP only — Default plan keeps
+    working normally (analysis + follow-ups), it just never gets a
+    browsable history."""
+    email = (request.args.get("email") or "guest@vectracore.ai").strip().lower()
+    plan = (request.args.get("plan") or "default").strip().lower()
+
+    if plan not in SESSION_PLANS:
+        return jsonify({
+            "error": "Analysis history is available on Pro and VIP plans.",
+            "upgrade_required": True,
+        }), 403
+
+    memory, sessions = _load_sessions(email)
+    memory[email] = sessions
+    _save_json(CHART_MEMORY_FILE, memory)  # persist any legacy migration
+
+    out = [{
+        "id": s["id"],
+        "title": s.get("title") or "Untitled",
+        "symbol": s.get("symbol"),
+        "timeframe": s.get("timeframe"),
+        "created_at": s.get("created_at"),
+        "updated_at": s.get("updated_at"),
+    } for s in sessions]
+
+    out.sort(key=lambda s: s.get("updated_at") or s.get("created_at") or "", reverse=True)
+    return jsonify(out), 200
+
+
+@app.route("/session/<session_id>", methods=["GET"])
+def get_session(session_id):
+    """Returns one full session (all turns) so it can be reopened and
+    continued, or replayed read-only, in the Recents sidebar."""
+    email = (request.args.get("email") or "guest@vectracore.ai").strip().lower()
+    plan = (request.args.get("plan") or "default").strip().lower()
+
+    if plan not in SESSION_PLANS:
+        return jsonify({
+            "error": "Analysis history is available on Pro and VIP plans.",
+            "upgrade_required": True,
+        }), 403
+
+    _, sessions = _load_sessions(email)
+    session = _find_session(sessions, session_id)
+    if not session:
+        return jsonify({"error": "Session not found."}), 404
+
+    return jsonify(session), 200
+
+
 @app.route("/market-sentiment", methods=["GET"])
 def market_sentiment():
     """Pulls headlines from Finnhub and asks Gemini for a sentiment read.
@@ -1426,6 +1597,8 @@ def analyze_chart():
 
         chart = request.files.get("chart")
 
+        session_id = request.form.get("session_id", "").strip() or None
+
         print("PLAN:", plan)
 
         # ==========================================================
@@ -1454,47 +1627,29 @@ def analyze_chart():
         print(f"ACTIVE AI -> {plan.upper()}")
 
         # ==========================================================
-        # LOAD MEMORY
+        # LOAD MEMORY (session-based — see _load_sessions / session
+        # helpers near the top of the file)
         # ==========================================================
 
-        memory = _load_json(
-            "chart_memory.json",
-            {}
-        )
+        memory, sessions = _load_sessions(user_email)
 
-        memory.setdefault(user_email, [])
+        # A session is only ever reused when the frontend explicitly sends
+        # back a session_id (i.e. the user has that thread open / selected
+        # in the Recents sidebar). A chart upload or question with no
+        # session_id — or one that no longer matches anything — always
+        # starts a brand new session instead of silently borrowing context
+        # from whatever the user last did, which is what caused a follow-up
+        # on EURUSD to sometimes answer using a leftover ETHUSD analysis.
+        active_session = _find_session(sessions, session_id)
 
-        previous_analysis = ""
-
+        last_analysis = _session_last_analysis(active_session)
+        previous_analysis = json.dumps(last_analysis, indent=2) if last_analysis else ""
         previous_question = ""
-        previous_conversation = ""
-
-        if memory[user_email]:
-
-            latest = memory[user_email][-1]
-
-            memory_source = latest.get("summary")
-
-            if memory_source is None:
-                memory_source = latest.get("analysis", {})
-
-            previous_analysis = json.dumps(
-                memory_source,
-                indent=2
-            )
-            print("Previous summary length:", len(previous_analysis))
-               
-            previous_question = latest.get(
-                "question",
-                ""
-            )
-
-            conversation = latest.get("conversation", [])
-
-            previous_conversation = "\n".join(
-                f'{msg["role"].upper()}: {msg["content"]}'
-                for msg in conversation
-            )  
+        if active_session and active_session.get("turns"):
+            for t in active_session["turns"]:
+                if t.get("role") == "user":
+                    previous_question = t.get("content", "")
+        previous_conversation = _session_conversation_text(active_session)
 
         # ==========================================================
         # MODE 1
@@ -1625,35 +1780,40 @@ USER REQUEST
             # store the parsed result as-is. It stays correct automatically
             # no matter which fields a given plan's schema does or doesn't
             # include.
-            summary = result
-
             app.logger.error("SUMMARY CREATED SUCCESSFULLY")
-            memory[user_email].append({
 
-                "timestamp": datetime.utcnow().isoformat(),
+            now_iso = datetime.utcnow().isoformat()
 
-                "question": question,
+            if active_session is None:
+                active_session = {
+                    "id": uuid.uuid4().hex,
+                    "created_at": now_iso,
+                    "symbol": result.get("symbol"),
+                    "timeframe": result.get("timeframe"),
+                    "title": _session_title(result.get("symbol"), result.get("timeframe"), question),
+                    "plan": plan,
+                    "turns": [],
+                }
+                sessions.append(active_session)
 
-                "analysis": result,
-                "summary": summary,
-
-                "conversation": [
-                    {
-                        "role": "user",
-                        "content": question
-                    },
-                    {
-                        "role": "assistant",
-                        "content": result
-                   }
-                ]
-
+            active_session["updated_at"] = now_iso
+            active_session["turns"].append({
+                "role": "user",
+                "type": "chart",
+                "content": question or "(chart uploaded)",
+                "timestamp": now_iso,
             })
-            _save_json(
-                "chart_memory.json",
-                memory
-            )
+            active_session["turns"].append({
+                "role": "assistant",
+                "type": "analysis",
+                "content": result,
+                "timestamp": now_iso,
+            })
 
+            memory[user_email] = sessions
+            _save_json(CHART_MEMORY_FILE, memory)
+
+            result["session_id"] = active_session["id"]
             return jsonify(result)
         # ==========================================================
         # QUESTION LIMIT CHECK (applies to MODE 2 + MODE 3 — any
@@ -1683,7 +1843,7 @@ USER REQUEST
         # was too fragile (missed valid follow-ups like "what about the
         # trend now" that don't contain one of the listed words), so any
         # question with existing context now goes through this path.
-        is_chart_followup = previous_analysis != ""
+        is_chart_followup = active_session is not None
 
         if is_chart_followup:
 
@@ -1826,27 +1986,26 @@ Return JSON:
             app.logger.error("FOLLOWUP RAW RESPONSE:\n%s", response.text)
 
             result = _safe_json(response)
-            memory[user_email][-1]["conversation"].append({
 
+            now_iso = datetime.utcnow().isoformat()
+            active_session["updated_at"] = now_iso
+            active_session["turns"].append({
                 "role": "user",
-
-                "content": question
-
+                "type": "text",
+                "content": question,
+                "timestamp": now_iso,
             })
-
-            memory[user_email][-1]["conversation"].append({
-
+            active_session["turns"].append({
                 "role": "assistant",
-
-                "content": result.get("answer", "")
-
+                "type": "text",
+                "content": result.get("answer", ""),
+                "timestamp": now_iso,
             })
 
-            _save_json(
-                "chart_memory.json",
-                memory
-            )
+            memory[user_email] = sessions
+            _save_json(CHART_MEMORY_FILE, memory)
 
+            result["session_id"] = active_session["id"]
             return jsonify(result)
 
         # ==========================================================
@@ -1946,6 +2105,25 @@ Return JSON:
 
         result = _safe_json(response)
 
+        now_iso = datetime.utcnow().isoformat()
+        new_session = {
+            "id": uuid.uuid4().hex,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "symbol": None,
+            "timeframe": None,
+            "title": _session_title(None, None, question),
+            "plan": plan,
+            "turns": [
+                {"role": "user", "type": "text", "content": question, "timestamp": now_iso},
+                {"role": "assistant", "type": "text", "content": result.get("answer", ""), "timestamp": now_iso},
+            ],
+        }
+        sessions.append(new_session)
+        memory[user_email] = sessions
+        _save_json(CHART_MEMORY_FILE, memory)
+
+        result["session_id"] = new_session["id"]
         return jsonify(result)
 
     except TimeoutError as e:
