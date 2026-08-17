@@ -42,12 +42,37 @@
             height: 60px;
         }
 
-        .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text-main); }
+        .header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text-main); min-width: 0; }
         .logo-mark { width: 26px; height: 26px; flex-shrink: 0; }
-        .logo h1 { font-size: 1.3rem; letter-spacing: 2px; font-weight: 700; }
+        .logo h1 { font-size: 1.3rem; letter-spacing: 2px; font-weight: 700; white-space: nowrap; }
         .logo h1 span { color: var(--accent-color); }
 
-        .header-actions { display: flex; align-items: center; gap: 20px; }
+        .mobile-menu-btn {
+            display: none;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            width: 34px;
+            height: 34px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .header-actions { display: flex; align-items: center; gap: 20px; flex-wrap: nowrap; }
+
+        .feedback-btn-short, .upgrade-btn-short { display: none; }
+
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 550;
+        }
+        .sidebar-backdrop.visible { display: block; }
 
         .feedback-btn {
             background-color: transparent;
@@ -851,24 +876,136 @@
 
         .submit-feedback-btn:hover { background-color: var(--accent-hover); }
         .submit-feedback-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ===================== RESPONSIVE / MOBILE ===================== */
+        img, svg { max-width: 100%; }
+
+        @media (max-width: 860px) {
+            html, body {
+                height: auto;
+                min-height: 100vh;
+                overflow-x: hidden;
+                overflow-y: auto;
+            }
+
+            header {
+                height: auto;
+                padding: 10px 14px;
+                flex-wrap: nowrap;
+                z-index: 700;
+                position: relative;
+            }
+
+            .mobile-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
+
+            .logo h1 { font-size: 1.05rem; letter-spacing: 1px; }
+            .logo-mark { width: 22px; height: 22px; }
+
+            .header-actions { gap: 8px; }
+
+            .feedback-btn, .upgrade-btn { padding: 7px 10px; font-size: 0.75rem; white-space: nowrap; }
+            .feedback-btn-full, .upgrade-btn-full { display: none; }
+            .feedback-btn-short, .upgrade-btn-short { display: inline; }
+
+            .navbar-plan-badge { padding: 6px 10px; font-size: 0.7rem; }
+
+            .user-badge {
+                max-width: 90px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 0.72rem;
+                padding: 6px 8px;
+            }
+
+            /* Recents sidebar becomes an off-canvas drawer that slides
+               over the content instead of squeezing it horizontally */
+            .workspace-container { position: relative; }
+
+            .recents-sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                width: 78vw;
+                max-width: 300px;
+                min-width: 0;
+                z-index: 600;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+                box-shadow: 6px 0 24px rgba(0, 0, 0, 0.5);
+            }
+
+            .recents-sidebar.mobile-open { transform: translateX(0); }
+
+            /* the desktop "collapsed" (56px rail) state doesn't apply on mobile */
+            .recents-sidebar.collapsed {
+                width: 78vw;
+                min-width: 0;
+                max-width: 300px;
+            }
+            .recents-sidebar.collapsed .recents-title,
+            .recents-sidebar.collapsed .recents-body { display: block; }
+
+            .workspace-container {
+                flex-direction: column;
+                overflow: visible;
+                height: auto;
+            }
+
+            .ai-inputs-panel {
+                flex: none;
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+                padding: 18px;
+                overflow: visible;
+            }
+
+            .ai-output-panel {
+                flex: none;
+                width: 100%;
+                overflow: visible;
+            }
+
+            .response-viewport { padding: 18px; }
+
+            .trade-levels-grid { grid-template-columns: 1fr 1fr; }
+
+            .snapshot-grid { grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+        }
+
+        @media (max-width: 420px) {
+            .logo h1 { font-size: 0.95rem; }
+            .header-actions { gap: 6px; }
+            .navbar-plan-badge .badge-label { font-size: 0.65rem; }
+            .upgrade-btn, .feedback-btn { padding: 6px 8px; font-size: 0.7rem; }
+            .user-badge { max-width: 70px; }
+            .trade-levels-grid { grid-template-columns: 1fr; }
+        }
     </style>
     <link rel="icon" type="image/jpeg" href="/logo.jpeg">
 </head>
 <body>
 
     <header>
-        <a class="logo" href="index.html">
-            <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><line x1="14" y1="61" x2="82" y2="61" stroke="#ff3b30" stroke-width="3" stroke-dasharray="4 5" opacity="0.55"/><path d="M22,45 L44,84 L86,32" fill="none" stroke="#f0f3f6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M44,61 L44,84 L86,32" fill="none" stroke="#ff3b30" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44" cy="84" r="9" fill="#ff3b30"/></svg>
-            <h1>Vectra <span>Core</span></h1>
-        </a>
+        <div class="header-left">
+            <button class="mobile-menu-btn" id="mobile-sidebar-toggle" aria-label="Toggle recents menu">&#9776;</button>
+            <a class="logo" href="index.html">
+                <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><line x1="14" y1="61" x2="82" y2="61" stroke="#ff3b30" stroke-width="3" stroke-dasharray="4 5" opacity="0.55"/><path d="M22,45 L44,84 L86,32" fill="none" stroke="#f0f3f6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M44,61 L44,84 L86,32" fill="none" stroke="#ff3b30" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44" cy="84" r="9" fill="#ff3b30"/></svg>
+                <h1>Vectra <span>Core</span></h1>
+            </a>
+        </div>
         <div class="header-actions">
-            <button class="feedback-btn" id="open-feedback-btn">Send Feedback</button>
+            <button class="feedback-btn" id="open-feedback-btn"><span class="feedback-btn-full">Send Feedback</span><span class="feedback-btn-short">Feedback</span></button>
             <div id="navbar-plan-badge" class="navbar-plan-badge plan-default"><span class="badge-label">✨ DEFAULT</span></div>
 
-            <a href="pricing.html" class="upgrade-btn">⬆ Upgrade Plan</a>
+            <a href="pricing.html" class="upgrade-btn"><span class="upgrade-btn-full">⬆ Upgrade Plan</span><span class="upgrade-btn-short">⬆ Upgrade</span></a>
             <div class="user-badge" id="current-user">guest@vectracore.ai</div>
         </div>
     </header>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
     <div class="workspace-container">
 
@@ -1331,6 +1468,7 @@
         async function openSession(sessionId, { fallback } = {}) {
             if (!sessionsEnabled || !sessionId) return;
             currentSessionId = sessionId;
+            if (window.matchMedia('(max-width: 860px)').matches && typeof closeMobileSidebar === 'function') closeMobileSidebar();
 
             try {
                 const response = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(sessionId)}?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
@@ -1363,11 +1501,33 @@
         }
 
         recentsToggleBtn.addEventListener('click', () => {
+            if (window.matchMedia('(max-width: 860px)').matches) {
+                closeMobileSidebar();
+                return;
+            }
             const collapsed = recentsSidebar.classList.toggle('collapsed');
             recentsToggleBtn.innerHTML = collapsed ? '&#8677;' : '&#8676;';
         });
 
+        // --- MOBILE RECENTS DRAWER ---
+        const mobileSidebarToggle = document.getElementById('mobile-sidebar-toggle');
+        const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+
+        function openMobileSidebar() {
+            recentsSidebar.classList.add('mobile-open');
+            sidebarBackdrop.classList.add('visible');
+        }
+        function closeMobileSidebar() {
+            recentsSidebar.classList.remove('mobile-open');
+            sidebarBackdrop.classList.remove('visible');
+        }
+        mobileSidebarToggle.addEventListener('click', () => {
+            recentsSidebar.classList.contains('mobile-open') ? closeMobileSidebar() : openMobileSidebar();
+        });
+        sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+
         recentsNewBtn.addEventListener('click', () => {
+            if (window.matchMedia('(max-width: 860px)').matches) closeMobileSidebar();
             currentSessionId = null;
             document.getElementById('ai-response-viewport').innerHTML = `
                 <div style="text-align: center; color: var(--text-muted); margin-top: 80px; font-size: 0.9rem; padding: 30px;">
