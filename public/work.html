@@ -7,13 +7,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0b0e11;
-            --panel-bg: #151a22;
-            --border-color: #2a323f;
-            --accent-color: #ff3b30;
-            --accent-hover: #e02d25;
-            --text-main: #f0f3f6;
-            --text-muted: #848e9c;
+            --bg-color: #050A1A;
+            --panel-bg: #0E1530;
+            --border-color: #232C4A;
+            --accent-color: #8B5CF6;
+            --accent-hover: #7C3AED;
+            --text-main: #F5F7FF;
+            --text-muted: #8891B3;
         }
 
         * {
@@ -95,10 +95,10 @@
         .user-badge {
             color: var(--text-main);
             font-size: 0.85rem;
-            background: rgba(255, 59, 48, 0.1);
+            background: rgba(139, 92, 246, 0.1);
             padding: 6px 12px;
             border-radius: 4px;
-            border: 1px solid rgba(255, 59, 48, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.2);
         }
 
         .workspace-container { display: flex; flex: 1; overflow: hidden; }
@@ -362,7 +362,7 @@
         }
 
         .trade-levels-grid .value.sl {
-            color: #ff3b30;
+            color: #ef4444;
         }
 
         .wait-probability-grid {
@@ -396,7 +396,7 @@
         }
 
         .wait-probability-grid .prob-box.buy .prob-value { color: #2ecc71; }
-        .wait-probability-grid .prob-box.sell .prob-value { color: #ff3b30; }
+        .wait-probability-grid .prob-box.sell .prob-value { color: #ef4444; }
 
         .wait-triggers {
             margin-top: 14px;
@@ -415,7 +415,7 @@
         }
 
         .wait-triggers .trigger-line.buy { border-left-color: #2ecc71; }
-        .wait-triggers .trigger-line.sell { border-left-color: #ff3b30; }
+        .wait-triggers .trigger-line.sell { border-left-color: #ef4444; }
 
         .disclaimer-line {
             font-size: 0.75rem;
@@ -425,8 +425,8 @@
         }
 
         .chat-narrative-bubble {
-            background-color: rgba(255, 59, 48, 0.04);
-            border: 1px solid rgba(255, 59, 48, 0.15);
+            background-color: rgba(139, 92, 246, 0.04);
+            border: 1px solid rgba(139, 92, 246, 0.15);
             border-radius: 8px;
             padding: 20px;
         }
@@ -436,13 +436,13 @@
         .chat-narrative-bubble p {
             font-size: 0.92rem;
             line-height: 1.6;
-            color: #f0f3f6;
+            color: #F5F7FF;
             white-space: pre-wrap;
         }
 
         .error-bubble {
-            background-color: rgba(255, 59, 48, 0.08);
-            border: 1px solid var(--accent-color);
+            background-color: rgba(239, 68, 68, 0.08);
+            border: 1px solid #ef4444;
             border-radius: 8px;
             padding: 20px;
             color: #ffb4af;
@@ -450,12 +450,12 @@
         }
 
         .upgrade-bubble {
-            background: linear-gradient(160deg, rgba(255, 59, 48, 0.10), rgba(255, 59, 48, 0.03));
+            background: linear-gradient(160deg, rgba(139, 92, 246, 0.10), rgba(139, 92, 246, 0.03));
             border: 1px solid var(--accent-color);
             border-radius: 14px;
             padding: 26px 24px;
             text-align: center;
-            box-shadow: 0 8px 28px rgba(255, 59, 48, 0.12);
+            box-shadow: 0 8px 28px rgba(139, 92, 246, 0.12);
         }
 
         .upgrade-bubble .upgrade-title {
@@ -473,7 +473,7 @@
         .upgrade-bubble p {
             font-size: 0.9rem;
             line-height: 1.6;
-            color: #f0f3f6;
+            color: #F5F7FF;
             margin-bottom: 18px;
         }
 
@@ -512,7 +512,7 @@
             font-size: 1.4rem;
             font-weight: 700;
             font-variant-numeric: tabular-nums;
-            color: var(--text-main, #f0f3f6);
+            color: var(--text-main, #F5F7FF);
             line-height: 1;
         }
 
@@ -542,7 +542,7 @@
         .upgrade-plan-line {
             font-size: 0.85rem;
             font-weight: 600;
-            color: #f0f3f6;
+            color: #F5F7FF;
             background-color: rgba(255, 255, 255, 0.06);
             border-radius: 8px;
             padding: 10px 14px;
@@ -562,7 +562,7 @@
         }
 
         .upgrade-cta-btn:hover {
-            background-color: var(--accent-hover, #e02d25);
+            background-color: var(--accent-hover, #7C3AED);
             transform: translateY(-1px);
         }
 
@@ -623,8 +623,8 @@
         .recents-new-btn {
             margin: 12px;
             padding: 10px 12px;
-            background-color: rgba(255, 59, 48, 0.1);
-            border: 1px solid rgba(255, 59, 48, 0.35);
+            background-color: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.35);
             color: var(--text-main);
             border-radius: 6px;
             font-size: 0.82rem;
@@ -635,7 +635,7 @@
             flex-shrink: 0;
         }
 
-        .recents-new-btn:hover { background-color: rgba(255, 59, 48, 0.18); }
+        .recents-new-btn:hover { background-color: rgba(139, 92, 246, 0.18); }
 
         .recents-sidebar.collapsed .recents-new-btn {
             margin: 12px 8px;
@@ -674,7 +674,7 @@
         .recents-item:hover { background-color: rgba(255, 255, 255, 0.06); }
 
         .recents-item.active {
-            background-color: rgba(255, 59, 48, 0.15);
+            background-color: rgba(139, 92, 246, 0.15);
             color: var(--accent-color);
             font-weight: 600;
         }
@@ -866,12 +866,12 @@
     border-radius:10px;
     text-decoration:none;
     color:white;
-    border:1px solid #ff4040;
+    border:1px solid #8B5CF6;
     transition:0.25s;
 }
 
 .upgrade-btn:hover{
-    background:#ff4040;
+    background:#8B5CF6;
 }
 
         .submit-feedback-btn:hover { background-color: var(--accent-hover); }
@@ -992,7 +992,7 @@
         <div class="header-left">
             <button class="mobile-menu-btn" id="mobile-sidebar-toggle" aria-label="Toggle recents menu">&#9776;</button>
             <a class="logo" href="index.html">
-                <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><line x1="14" y1="61" x2="82" y2="61" stroke="#ff3b30" stroke-width="3" stroke-dasharray="4 5" opacity="0.55"/><path d="M22,45 L44,84 L86,32" fill="none" stroke="#f0f3f6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M44,61 L44,84 L86,32" fill="none" stroke="#ff3b30" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><circle cx="44" cy="84" r="9" fill="#ff3b30"/></svg>
+                <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <h1>Vectra <span>Core</span></h1>
             </a>
         </div>
