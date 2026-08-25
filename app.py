@@ -335,30 +335,42 @@ def get_usage():
 
 def save_usage(data):
     _save_json("usage.json", data)   
-def initialize_user_usage(usage, email):
+# Chart-upload limits and their reset window, per plan. VIP is unlimited
+# (handled separately in check_user_limits) so it isn't listed here.
+# Chat/questions are unlimited on every plan now, so there's no
+# corresponding limits dict for "question" anymore.
+CHART_LIMITS = {
+    "default": 3,
+    "pro": 10,
+}
+
+CHART_RESET_HOURS = {
+    "default": 8,
+    "pro": 12,
+}
+
+
+def initialize_user_usage(usage, email, plan):
 
     if email not in usage:
+
+        reset_hours = CHART_RESET_HOURS.get(plan, 8)
 
         usage[email] = {
 
             "charts_used": 0,
-            "questions_used": 0,
 
             "charts_reset": (
-                datetime.utcnow() + timedelta(days=1)
+                datetime.utcnow() + timedelta(hours=reset_hours)
             ).isoformat(),
-
-            "questions_reset": (
-                datetime.utcnow() + timedelta(hours=12)
-            ).isoformat()
 
         }
 
-    return usage    
-def reset_usage_if_needed(usage, email):
+    return usage
+def reset_usage_if_needed(usage, email, plan):
 
     # -----------------------------
-    # Reset chart usage (24h)
+    # Reset chart usage (window depends on plan — Default: 8h, Pro: 12h)
     # -----------------------------
 
     chart_reset = datetime.fromisoformat(
@@ -369,47 +381,33 @@ def reset_usage_if_needed(usage, email):
 
         usage[email]["charts_used"] = 0
 
+        reset_hours = CHART_RESET_HOURS.get(plan, 8)
+
         usage[email]["charts_reset"] = (
-            datetime.utcnow() + timedelta(days=1)
-        ).isoformat()
-
-    # -----------------------------
-    # Reset question usage (12h)
-    # -----------------------------
-
-    question_reset = datetime.fromisoformat(
-        usage[email]["questions_reset"]
-    )
-
-    if datetime.utcnow() >= question_reset:
-
-        usage[email]["questions_used"] = 0
-
-        usage[email]["questions_reset"] = (
-            datetime.utcnow() + timedelta(hours=12)
+            datetime.utcnow() + timedelta(hours=reset_hours)
         ).isoformat()
 
     return usage
 def check_user_limits(usage, email, plan, request_type):
 
-    usage = initialize_user_usage(usage, email)
-    usage = reset_usage_if_needed(usage, email)
-
     # VIP = unlimited
     if plan == "vip":
         return True, None
+
+    # Chat is unlimited on every plan now (Default and Pro included) —
+    # only chart uploads are ever rate-limited.
+    if request_type == "question":
+        return True, None
+
+    usage = initialize_user_usage(usage, email, plan)
+    usage = reset_usage_if_needed(usage, email, plan)
 
     # -----------------------------
     # CHART REQUEST
     # -----------------------------
     if request_type == "chart":
 
-        chart_limits = {
-            "default": 2,
-            "pro": 15
-        }
-
-        limit = chart_limits.get(plan, 2)
+        limit = CHART_LIMITS.get(plan, 3)
 
         if usage[email]["charts_used"] >= limit:
 
@@ -431,49 +429,11 @@ def check_user_limits(usage, email, plan, request_type):
                 "retry_after_seconds": max(0, remaining),
                 "error": (
                     "You've used all your chart uploads for your current plan. "
-                    "Upgrade for Pro/VIP plan to upload more / ask more."
+                    "Upgrade to Pro/VIP to unlock more chart analyses."
                 )
             }
 
         usage[email]["charts_used"] += 1
-
-    # -----------------------------
-    # QUESTION REQUEST
-    # -----------------------------
-    elif request_type == "question":
-
-        question_limits = {
-            "default": 10,
-            "pro": 100
-        }
-
-        limit = question_limits.get(plan, 10)
-
-        if usage[email]["questions_used"] >= limit:
-
-            remaining = int(
-                (
-                    datetime.fromisoformat(
-                        usage[email]["questions_reset"]
-                    ) - datetime.utcnow()
-                ).total_seconds()
-            )
-
-            return False, {
-                "success": False,
-                "limit": True,
-                "type": "question",
-                "remaining_seconds": max(0, remaining),
-                "upgrade_required": True,
-                "upgrade_reason": "rate_limit",
-                "retry_after_seconds": max(0, remaining),
-                "error": (
-                    "You've used all your questions for your current plan. "
-                    "Upgrade for Pro/VIP plan to upload more / ask more."
-                )
-            }
-
-        usage[email]["questions_used"] += 1
 
     save_usage(usage)
 
