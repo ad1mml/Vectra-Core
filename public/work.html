@@ -1344,12 +1344,11 @@
             const title = isRateLimit ? '&#9203; Limit reached' : '&#9888; Upgrade for this feature';
             const hasCountdown = typeof data.retry_after_seconds === 'number' && data.retry_after_seconds > 0;
 
-            // "chart" limits reset every 24h, "question" limits reset every 12h.
+            // Chat is unlimited on every plan now — the only remaining
+            // rate limit is on chart uploads (Default: 3/8h, Pro: 10/12h).
             const resetLabel = data.type === 'chart'
                 ? 'Your chart-upload limit resets in'
-                : data.type === 'question'
-                    ? 'Your question limit resets in'
-                    : 'Resets in';
+                : 'Resets in';
 
             const viewport = document.getElementById('ai-response-viewport');
             viewport.innerHTML = `
@@ -1364,7 +1363,7 @@
                             </div>
                         </div>
                     ` : ''}
-                    <div class="upgrade-plan-line">Upgrade to Pro/VIP plan to upload more / ask more.</div>
+                    <div class="upgrade-plan-line">Upgrade to Pro/VIP to unlock more chart analyses.</div>
                     <a class="upgrade-cta-btn" href="pricing.html">&#11014; Upgrade Plan</a>
                 </div>
             `;
