@@ -350,7 +350,7 @@
 
         .trade-levels-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
             gap: 14px 20px;
             margin-top: 16px;
             padding-top: 16px;
@@ -378,6 +378,10 @@
 
         .trade-levels-grid .value.sl {
             color: #ef4444;
+        }
+
+        .trade-levels-grid .value.rr {
+            color: #8B5CF6;
         }
 
         .wait-probability-grid {
@@ -1238,11 +1242,17 @@
             const decisionUpper = (data.decision || '').toString().trim().toUpperCase();
             const isTrade = decisionUpper === 'BUY' || decisionUpper === 'SELL';
 
+            const hasRR = data.risk_reward !== undefined && data.risk_reward !== null && data.risk_reward !== '';
+            const rrBoxHTML = hasRR
+                ? `<div><span class="label">Risk / Reward</span><span class="value rr">${escapeHtml(data.risk_reward)}R</span></div>`
+                : '';
+
             const tradeLevelsHTML = isTrade ? `
                         <div class="trade-levels-grid">
                             <div><span class="label">Entry</span><span class="value">${escapeHtml(data.entry || 'N/A')}</span></div>
                             <div><span class="label">Take Profit</span><span class="value tp">${escapeHtml(data.take_profit || 'N/A')}</span></div>
                             <div><span class="label">Stop Loss</span><span class="value sl">${escapeHtml(data.stop_loss || 'N/A')}</span></div>
+                            ${rrBoxHTML}
                         </div>
             ` : `
                         <div>
