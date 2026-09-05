@@ -52,7 +52,10 @@ Recommend BUY only when:
 
 ✓ Risk Manager's overall read is acceptable — reward-to-risk is one
   factor the Risk Manager weighs (alongside stop quality, target
-  realism, volatility), not a single number that vetoes on its own
+  realism, volatility), not a single number that vetoes on its own,
+  EXCEPT reward-to-risk below 1:1, which is an automatic veto on its
+  own — the arithmetic never works below breakeven, regardless of how
+  strong everything else looks
 
 ✓ Validator approves
 
@@ -70,7 +73,10 @@ Recommend SELL only when:
 
 ✓ Risk Manager's overall read is acceptable — reward-to-risk is one
   factor the Risk Manager weighs (alongside stop quality, target
-  realism, volatility), not a single number that vetoes on its own
+  realism, volatility), not a single number that vetoes on its own,
+  EXCEPT reward-to-risk below 1:1, which is an automatic veto on its
+  own — the arithmetic never works below breakeven, regardless of how
+  strong everything else looks
 
 ✓ Validator approves
 

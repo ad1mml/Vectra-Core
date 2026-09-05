@@ -202,6 +202,16 @@ whenever the setup itself doesn't meet a genuinely high-probability
 bar — never as a mechanical response to a specific RR number, and
 never suppressed just because the RR happens to look good.
 
+ONE EXCEPTION: if the true, honestly-derived R:R comes out below
+1:1 — meaning the risk on the trade is bigger than the potential
+reward — output "Wait" regardless of how clean everything else looks.
+No amount of structural confluence changes that math; a trade with
+less potential reward than risk needs a win rate no analysis can
+promise just to break even. This is a near-zero sanity floor, not a
+target — it never means "stretch the TP or tighten the SL to clear
+1:1," it means report the honest levels and let "Wait" reflect what
+the real math says.
+
 ==================================================
 WHEN THE DECISION IS WAIT
 ==================================================

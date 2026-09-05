@@ -497,6 +497,15 @@ setup genuinely doesn't clear a high-probability bar on the merits —
 not mechanically because of one ratio, and not suppressed just
 because the ratio happens to look good.
 
+ONE EXCEPTION — HARD FLOOR AT 1:1: if the true, honestly-derived R:R
+is below 1:1, output WAIT regardless of how strong the rest of the
+committee's read is. Reward smaller than risk means the trade needs a
+win rate no analysis can honestly promise just to break even —
+structural clarity, liquidity strength, and confluence do not change
+that math. This floor sits near zero, not near a target: it never
+means stretch the TP or tighten the SL to clear 1:1 — it means report
+the honest SL/TP and let WAIT reflect what the real numbers say.
+
 Never tighten or relocate the SL at any point in this process to
 chase R:R. Never invent a level that is not really on the chart —
 "look farther along real structure" is not the same thing as

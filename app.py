@@ -1038,7 +1038,7 @@ def _safe_json(response):
         )
 
 # ---------------------------------------------------------------------------
-# RISK/REWARD ANNOTATION (no forcing, no fabrication)
+# RISK/REWARD ANNOTATION + FLOOR (no forcing, no fabrication)
 # ---------------------------------------------------------------------------
 # Older version of this code force-shipped every Buy/Sell at a fixed 2.3R
 # floor — either by downgrading anything below it to WAIT, or (worse) by
@@ -1050,22 +1050,34 @@ def _safe_json(response):
 # it's not something we should ship silently to a user placing real
 # orders off these numbers.
 #
-# Current behavior — this function NEVER edits decision, entry,
-# take_profit, or stop_loss. It only:
-#   - Computes the true R:R from whatever the model returned and writes
-#     it into "risk_reward" (for plans whose schema has that field) so
-#     the user always sees the real number, whatever it is.
-#   - Falls back to WAIT only when entry/stop_loss themselves can't be
-#     parsed into a usable risk at all (garbage/missing data) — that's a
-#     data-quality problem, not a ratio judgment, and there is nothing
-#     safe to report in that case.
+# That target-style gate was removed entirely. What replaced it is a
+# single near-zero SANITY FLOOR, not a target: below 1:1 reward-to-risk,
+# a trade needs a win rate over 50% just to break even, and this system
+# has no way to actually estimate win probability — so there is no
+# honest basis for ever shipping that trade, no matter how clean the
+# structural read looks. This is fundamentally different from the old
+# 2.3 gate: it never stretches/tightens a level to get around it, it
+# just reports WAIT honestly when the real, unmodified levels produce
+# a ratio under 1:1.
 #
-# Setup quality/selectivity (including how RR factors into confidence)
-# is now entirely the model's call, per the prompt-side quality-tier
-# guidance in default_prompt.py / pro_TPSL.py / vip_TPSL.py — it is not
-# re-litigated or overridden here.
+# This function NEVER edits entry or take_profit or stop_loss. It only:
+#   - Falls back to WAIT when entry/stop_loss can't be parsed into a
+#     usable risk at all (garbage/missing data) — a data-quality
+#     problem, not a ratio judgment.
+#   - Falls back to WAIT when entry/stop_loss ARE usable but the true
+#     R:R they produce is below MIN_ACCEPTABLE_RR — a real number,
+#     compared honestly against a near-zero floor.
+#   - Otherwise, computes the true R:R and writes it into "risk_reward"
+#     (for plans whose schema has that field) so the user always sees
+#     the real number, whatever it is above the floor.
+#
+# Everything above 1:1 — including "is 1.4R worth taking," "is this
+# setup high enough quality to call Buy/Sell" — is entirely the model's
+# call, per the prompt-side quality-tier guidance in default_prompt.py /
+# pro_TPSL.py / vip_TPSL.py / the risk/validator/decision modules. It is
+# not re-litigated or overridden here.
 
-MIN_RR = 2.3  # kept only as a reference point for logging/analytics below
+MIN_ACCEPTABLE_RR = 1.0  # near-zero sanity floor, not a target — see above
 
 
 def _parse_price(val):
@@ -1102,13 +1114,23 @@ def _calc_rr(entry, stop_loss, take_profit):
     return reward / risk
 
 
-def _downgrade_to_wait(result, rr):
-    """Converts a Buy/Sell result dict to a WAIT result dict in place —
-    used only when entry/stop_loss can't be parsed into a usable risk at
-    all, so there's no valid base to extend a take_profit from. Preserves
-    every other field (chart read, structure, etc.) untouched — only
-    decision-dependent fields change. Leaves a trail in 'reasoning' so a
-    follow-up 'why' question still gets a real answer instead of nothing."""
+def _downgrade_to_wait(result, rr, reason="unusable"):
+    """Converts a Buy/Sell result dict to a WAIT result dict in place.
+    Preserves every other field (chart read, structure, etc.) untouched —
+    only decision-dependent fields change. Leaves a trail in 'reasoning'
+    so a follow-up 'why' question still gets a real answer instead of
+    nothing.
+
+    reason:
+      "unusable"  -> entry/stop_loss couldn't be parsed into a usable
+                     risk at all (data-quality problem).
+      "sub_floor" -> entry/stop_loss ARE usable and rr IS a real number,
+                     but it's below MIN_ACCEPTABLE_RR — genuinely
+                     negative-expectancy math (you'd need a win rate
+                     over the honest breakeven point just to net zero).
+                     This is not a fabricated judgment call, it's a
+                     floor near zero, not a target — the levels
+                     themselves are never touched, only the decision."""
 
     original_decision = str(result.get("decision", "")).strip()
     entry = result.get("entry", "")
@@ -1135,12 +1157,21 @@ def _downgrade_to_wait(result, rr):
         result["buy_probability"] = result.get("buy_probability") or 25
         result["sell_probability"] = result.get("sell_probability") or 25
 
-    gate_note = (
-        f"A {original_decision or 'trade'} setup formed near {entry or 'the current level'}, "
-        f"but the entry/stop levels weren't usable enough to compute a reliable "
-        f"reward-to-risk at all, so there's nothing safe to report here. "
-        f"Waiting for a cleaner, clearly-defined invalidation point."
-    )
+    if reason == "sub_floor":
+        gate_note = (
+            f"A {original_decision or 'trade'} setup formed near {entry or 'the current level'}, "
+            f"but the honest reward-to-risk here is only {rr:.2f}:1 — below 1:1, "
+            f"meaning the risk on this trade is bigger than the potential reward. "
+            f"No amount of structural confluence changes that math, so this isn't "
+            f"a tradeable setup right now."
+        )
+    else:
+        gate_note = (
+            f"A {original_decision or 'trade'} setup formed near {entry or 'the current level'}, "
+            f"but the entry/stop levels weren't usable enough to compute a reliable "
+            f"reward-to-risk at all, so there's nothing safe to report here. "
+            f"Waiting for a cleaner, clearly-defined invalidation point."
+        )
     result["buy_trigger"] = gate_note if original_decision.lower() != "sell" else (
         "A buy doesn't look likely from here without a clearer, valid stop level."
     )
@@ -1151,28 +1182,37 @@ def _downgrade_to_wait(result, rr):
     # Keep the original numbers visible internally so a follow-up "why"
     # question can still reference exactly what was rejected and why.
     existing_reasoning = result.get("reasoning") or ""
+    if reason == "sub_floor":
+        rejection_detail = (
+            f"rejected, reward-to-risk was only {rr:.2f}:1, below the 1:1 floor"
+        )
+    else:
+        rejection_detail = "rejected, entry/SL couldn't be parsed into a usable risk"
     result["reasoning"] = (
         f"{gate_note} (Original computed setup: {original_decision} entry {entry}, "
-        f"SL {sl}, TP {tp} — rejected, entry/SL couldn't be parsed into a usable "
-        f"risk.) {existing_reasoning}"
+        f"SL {sl}, TP {tp} — {rejection_detail}.) {existing_reasoning}"
     ).strip()
 
     return result
 
 
 def _enforce_min_rr(result):
-    """Annotation + data-quality pass applied to every chart-analysis
-    JSON result. Only touches Buy/Sell decisions; WAIT results pass
-    through untouched. Does NOT gate on the ratio and NEVER edits
-    entry/take_profit/stop_loss:
+    """Annotation + floor pass applied to every chart-analysis JSON
+    result. Only touches Buy/Sell decisions; WAIT results pass through
+    untouched. NEVER edits entry/take_profit/stop_loss — only the
+    decision itself, and only in the two cases below:
 
-      - entry/stop_loss parse into a usable risk -> the true R:R is
-        computed and written into "risk_reward" (for schemas that have
-        it), whatever that number is. decision/entry/take_profit/
-        stop_loss are left exactly as the model returned them.
-      - entry/stop_loss unusable (unparseable, or risk == 0) -> there is
-        no valid level to report at all, so the result is downgraded to
-        WAIT. This is a data-quality fallback, not a ratio judgment."""
+      - entry/stop_loss unusable (unparseable, or risk == 0) -> no
+        valid level to report at all -> WAIT (data-quality fallback).
+      - entry/stop_loss usable but the true R:R is below
+        MIN_ACCEPTABLE_RR (1.0) -> genuinely negative-expectancy math,
+        real numbers, real floor -> WAIT. This is NOT the old 2.3
+        "target to force" gate — it's a near-zero sanity floor, and it
+        never stretches/tightens a level to avoid it, it just reports
+        WAIT honestly when the real ratio is under 1:1.
+      - otherwise -> the true R:R is written into "risk_reward" (for
+        schemas that have it) and decision/entry/take_profit/stop_loss
+        are left exactly as the model returned them."""
     if not isinstance(result, dict):
         return result
 
@@ -1186,19 +1226,27 @@ def _enforce_min_rr(result):
         result.get("take_profit"),
     )
 
-    if rr is not None:
-        # Always surface the true ratio for schemas with a display field —
-        # this never influences the decision, it's pure transparency.
-        if "risk_reward" in result:
-            result["risk_reward"] = f"{rr:.2f}"
-        return result
+    if rr is None:
+        app.logger.warning(
+            "RR ANNOTATION: downgraded %s -> Wait, entry/stop unusable (entry=%s sl=%s tp=%s)",
+            result.get("decision"), result.get("entry"),
+            result.get("stop_loss"), result.get("take_profit"),
+        )
+        return _downgrade_to_wait(result, rr, reason="unusable")
 
-    app.logger.warning(
-        "RR ANNOTATION: downgraded %s -> Wait, entry/stop unusable (entry=%s sl=%s tp=%s)",
-        result.get("decision"), result.get("entry"),
-        result.get("stop_loss"), result.get("take_profit"),
-    )
-    return _downgrade_to_wait(result, rr)
+    if rr < MIN_ACCEPTABLE_RR - 1e-9:
+        app.logger.warning(
+            "RR FLOOR: downgraded %s -> Wait, rr=%.2f below floor %.2f (entry=%s sl=%s tp=%s)",
+            result.get("decision"), rr, MIN_ACCEPTABLE_RR,
+            result.get("entry"), result.get("stop_loss"), result.get("take_profit"),
+        )
+        return _downgrade_to_wait(result, rr, reason="sub_floor")
+
+    # Always surface the true ratio for schemas with a display field —
+    # this never influences the decision, it's pure transparency.
+    if "risk_reward" in result:
+        result["risk_reward"] = f"{rr:.2f}"
+    return result
 
 
 # ---------------------------------------------------------------------------

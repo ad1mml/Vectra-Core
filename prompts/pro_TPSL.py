@@ -408,6 +408,15 @@ WAIT when the setup genuinely doesn't clear a high-probability bar —
 never mechanically because of one ratio, and never suppressed just
 because the ratio happens to look good.
 
+ONE EXCEPTION — HARD FLOOR AT 1:1: if the true, honestly-derived R:R
+is below 1:1, output WAIT regardless of how strong everything else
+looks. Reward smaller than risk means you'd need a win rate this
+analysis has no basis to promise just to break even — no structural
+read, confluence, or liquidity strength changes that arithmetic. This
+is a near-zero floor, not a target: it never means stretch the TP or
+tighten the SL to clear 1:1 — it means report the honest SL/TP and
+let WAIT reflect what the real numbers say.
+
 ==================================================
 SL / TP RELATIONSHIP
 ====================

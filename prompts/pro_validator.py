@@ -41,7 +41,9 @@ Validate the following:
 □ Risk/Reward, as reported by the Risk Manager, is factored into
   overall confluence — a thin ratio on an otherwise strong,
   well-supported setup is not an automatic fail on its own; weigh it
-  the same way you weigh any other single checklist item.
+  the same way you weigh any other single checklist item. The one
+  exception: below 1:1 is an automatic FAIL regardless of confluence
+  elsewhere — reward smaller than risk fails on the arithmetic alone.
 
 □ No major contradiction exists.
 

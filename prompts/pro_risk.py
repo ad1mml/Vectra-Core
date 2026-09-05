@@ -102,16 +102,21 @@ and a well-protected stop to be worth carrying at this level. Flag it
 as thin, but don't reject on the ratio alone if everything else about
 the setup is genuinely strong.
 
-Poor:
-Below 1:1 — the reward doesn't justify the risk regardless of how
-clean the read is; flag this clearly.
+Poor — HARD FLOOR, REJECT:
+Below 1:1 — the reward is smaller than the risk, meaning the trade
+would need a win rate this desk has no honest basis to promise just
+to break even. This is the one reward-to-risk case that is an
+automatic REJECT regardless of how strong the rest of the read is —
+not because a bigger number is required, but because the basic
+math never works below breakeven. Never move the SL or TP to escape
+this — evaluate the real levels and reject honestly if they land here.
 
-Never move the SL or TP to change the ratio — evaluate the ratio the
-structural levels actually produce, whatever it is, and weigh it
-alongside entry quality, stop quality, target realism, and volatility.
-A well-supported 1.6:1 setup can still be an acceptable risk read; a
-shaky 3:1 setup is not automatically a good one just because the
-number is large.
+Never move the SL or TP to change the ratio otherwise — evaluate the
+ratio the structural levels actually produce, whatever it is (as long
+as it's at least 1:1), and weigh it alongside entry quality, stop
+quality, target realism, and volatility. A well-supported 1.6:1 setup
+can still be an acceptable risk read; a shaky 3:1 setup is not
+automatically a good one just because the number is large.
 
 ==================================================
 VOLATILITY
