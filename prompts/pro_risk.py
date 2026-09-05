@@ -86,21 +86,32 @@ Avoid unrealistic targets.
 RISK / REWARD
 ==================================================
 
-Preferred:
+Reward-to-risk is one input into the overall risk read, not a
+standalone pass/fail line. Rough calibration:
 
-2:1 or higher
+Excellent:
+3:1 or higher — but confirm the target isn't just far away; check the
+structure behind it is genuinely as strong as the number suggests.
 
-Acceptable:
+Solid:
+2:1 – 2.99:1
 
-1.5:1
+Modest but potentially workable:
+1.0:1 – 1.99:1 — needs unusually clean structure, strong liquidity,
+and a well-protected stop to be worth carrying at this level. Flag it
+as thin, but don't reject on the ratio alone if everything else about
+the setup is genuinely strong.
 
 Poor:
+Below 1:1 — the reward doesn't justify the risk regardless of how
+clean the read is; flag this clearly.
 
-Below 1.5
-
-Very Poor:
-
-Below 1
+Never move the SL or TP to change the ratio — evaluate the ratio the
+structural levels actually produce, whatever it is, and weigh it
+alongside entry quality, stop quality, target realism, and volatility.
+A well-supported 1.6:1 setup can still be an acceptable risk read; a
+shaky 3:1 setup is not automatically a good one just because the
+number is large.
 
 ==================================================
 VOLATILITY

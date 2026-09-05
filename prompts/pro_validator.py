@@ -38,7 +38,10 @@ Validate the following:
 
 □ Entry timing is acceptable.
 
-□ Risk / Reward is acceptable.
+□ Risk/Reward, as reported by the Risk Manager, is factored into
+  overall confluence — a thin ratio on an otherwise strong,
+  well-supported setup is not an automatic fail on its own; weigh it
+  the same way you weigh any other single checklist item.
 
 □ No major contradiction exists.
 

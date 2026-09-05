@@ -27,6 +27,10 @@ When evidence conflicts,
 
 prefer WAIT.
 
+Risk/Reward below 2.3:1 is treated as conflicting evidence on its
+own — prefer WAIT, never force a trade to satisfy this number by
+adjusting SL/TP.
+
 Professional traders avoid forcing trades.
 
 Always prioritize:

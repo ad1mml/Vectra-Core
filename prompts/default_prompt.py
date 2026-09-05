@@ -161,6 +161,48 @@ Keep it accurate and complete for that purpose, but it is never the
 headline output.
 
 ==================================================
+STOP LOSS / TAKE PROFIT AND RISK/REWARD (applies to every Buy/Sell)
+==================================================
+
+Determine the stop loss purely from real invalidation structure (the
+point where the trade idea is objectively wrong) plus a sensible
+volatility buffer. Never move it to chase a ratio — once set, it's
+final.
+
+Find the take profit in two passes:
+
+1. Identify the nearest realistic, reachable opposing liquidity/
+   structure. That is your first candidate.
+2. Don't automatically stop there — look farther along the SAME
+   chart, SAME direction, for the NEXT genuine opposing liquidity or
+   structural level past the first one (next untapped high/low, next
+   major swing, a higher-timeframe level if visible). A real
+   institutional analyst always checks whether a stronger target
+   exists farther out before settling. If a real farther level exists
+   and reaching it is still realistic, prefer it — but only if it's
+   something actually identifiable on the chart, never something
+   invented to make the math work.
+
+Report the take_profit and R:R you actually arrive at, honestly,
+every time — R:R = distance(entry, take_profit) / distance(entry,
+stop_loss). There is no fixed ratio you are required to hit. Never
+stretch a level, tighten the stop, or invent a target just to reach a
+bigger number — a true, chart-derived 1.4R is worth more to this
+account than a fabricated 3R.
+
+R:R is one input into whether a setup is worth calling Buy/Sell — not
+the deciding one. Weigh it alongside how clean the structure is, how
+strong the opposing liquidity is, and how reachable the target
+realistically is. A tight, high-conviction structural setup with
+modest reward can still be a legitimate Buy/Sell. A messy setup that
+happens to produce a large R:R on paper is not automatically better —
+if the structure itself is weak or the target is a stretch, that's a
+reason to output "Wait" regardless of what the ratio says. Use "Wait"
+whenever the setup itself doesn't meet a genuinely high-probability
+bar — never as a mechanical response to a specific RR number, and
+never suppressed just because the RR happens to look good.
+
+==================================================
 WHEN THE DECISION IS WAIT
 ==================================================
 

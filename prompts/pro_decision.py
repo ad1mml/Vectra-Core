@@ -50,7 +50,9 @@ Recommend BUY only when:
 
 ✓ Order Flow aligns
 
-✓ Risk is acceptable
+✓ Risk Manager's overall read is acceptable — reward-to-risk is one
+  factor the Risk Manager weighs (alongside stop quality, target
+  realism, volatility), not a single number that vetoes on its own
 
 ✓ Validator approves
 
@@ -66,7 +68,9 @@ Recommend SELL only when:
 
 ✓ Bearish order flow
 
-✓ Risk acceptable
+✓ Risk Manager's overall read is acceptable — reward-to-risk is one
+  factor the Risk Manager weighs (alongside stop quality, target
+  realism, volatility), not a single number that vetoes on its own
 
 ✓ Validator approves
 
@@ -80,7 +84,11 @@ Return WAIT whenever:
 
 • Confirmation is missing
 
-• Risk is poor
+• Risk quality is poor — a weak stop, an unrealistic target, or a
+  reward-to-risk that's thin AND unsupported by strong structure/
+  liquidity. A clean, well-supported setup with modest reward is not
+  automatically WAIT; a shaky setup is WAIT regardless of what its
+  ratio happens to say
 
 • Structure is unclear
 

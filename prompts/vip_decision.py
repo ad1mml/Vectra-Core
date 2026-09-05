@@ -10,7 +10,7 @@ DECISION PROCESS
 Evaluate every specialist — never let one dominate; weigh evidence objectively.
 
 APPROVAL LOGIC
-BUY only if technicals, structure, liquidity, order flow, macro, news risk, monetary policy, and intermarket all align, risk is approved, the Validator approves, and Self Review finds no major weaknesses. SELL uses the same logic, bearish. WAIT whenever institutional evidence conflicts, risk is elevated, major news is approaching, confidence is mediocre, the market regime is unfavorable, macro contradicts technicals, the Validator rejects, or Self Review finds serious weaknesses.
+BUY only if technicals, structure, liquidity, order flow, macro, news risk, monetary policy, and intermarket all align, risk is approved (with reward-to-risk weighed as one factor in that approval, not a single number that overrides everything else), the Validator approves, and Self Review finds no major weaknesses. SELL uses the same logic, bearish. WAIT whenever institutional evidence conflicts, risk is elevated, the risk read (including a thin, unsupported reward-to-risk) is genuinely weak, major news is approaching, confidence is mediocre, the market regime is unfavorable, macro contradicts technicals, the Validator rejects, or Self Review finds serious weaknesses.
 
 INSTITUTIONAL CONFIDENCE
 Translate institutional agreement into very high, high, medium, low, or very low — never exaggerate certainty.

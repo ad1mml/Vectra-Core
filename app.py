@@ -1026,14 +1026,180 @@ def _safe_json(response):
         return json.loads(repaired_response.text)
     except Exception as e:
         app.logger.error("JSON repair failed entirely: %s", e)
-        # Never raise here — always hand back a valid, well-formed dict
-        # so the frontend gets real JSON instead of a crash/timeout.
-        return {
-            "answer": "",
-            "reasoning": "",
-            "decision": "WAIT",
-            "error": "The AI's response couldn't be parsed this time — please try again.",
-        }
+        # Previously this returned a fake "successful" dict (answer: "",
+        # decision: "WAIT") with no HTTP error — the frontend has no way
+        # to tell that apart from a real WAIT/empty answer, so it just
+        # rendered blank N/A cards with no explanation. Raise instead, so
+        # this reaches analyze_chart's outer except block and comes back
+        # as a proper 500 with an error message the frontend actually
+        # displays via renderError().
+        raise Exception(
+            "The AI's response couldn't be parsed this time — please try again."
+        )
+
+# ---------------------------------------------------------------------------
+# RISK/REWARD ANNOTATION (no forcing, no fabrication)
+# ---------------------------------------------------------------------------
+# Older version of this code force-shipped every Buy/Sell at a fixed 2.3R
+# floor — either by downgrading anything below it to WAIT, or (worse) by
+# mathematically stretching take_profit until the ratio hit 2.3 regardless
+# of whether any real chart level was there. That second behavior means
+# the user could receive a take_profit that is pure arithmetic, presented
+# identically to a structurally-derived one, with no way to tell the
+# difference. That's not how an institutional desk grades a trade, and
+# it's not something we should ship silently to a user placing real
+# orders off these numbers.
+#
+# Current behavior — this function NEVER edits decision, entry,
+# take_profit, or stop_loss. It only:
+#   - Computes the true R:R from whatever the model returned and writes
+#     it into "risk_reward" (for plans whose schema has that field) so
+#     the user always sees the real number, whatever it is.
+#   - Falls back to WAIT only when entry/stop_loss themselves can't be
+#     parsed into a usable risk at all (garbage/missing data) — that's a
+#     data-quality problem, not a ratio judgment, and there is nothing
+#     safe to report in that case.
+#
+# Setup quality/selectivity (including how RR factors into confidence)
+# is now entirely the model's call, per the prompt-side quality-tier
+# guidance in default_prompt.py / pro_TPSL.py / vip_TPSL.py — it is not
+# re-litigated or overridden here.
+
+MIN_RR = 2.3  # kept only as a reference point for logging/analytics below
+
+
+def _parse_price(val):
+    """Best-effort parse of a price value that may arrive as a float,
+    an int, or a string like '1.2450', '1,245.0', '$1.2450', 'unclear'."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    if not s:
+        return None
+    s = re.sub(r"[^0-9.\-]", "", s)
+    if s in ("", "-", ".", "-."):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _calc_rr(entry, stop_loss, take_profit):
+    """Returns the risk:reward ratio, or None if the levels can't be
+    parsed or are degenerate (e.g. entry == stop_loss)."""
+    e = _parse_price(entry)
+    sl = _parse_price(stop_loss)
+    tp = _parse_price(take_profit)
+    if e is None or sl is None or tp is None:
+        return None
+    risk = abs(e - sl)
+    reward = abs(tp - e)
+    if risk <= 0:
+        return None
+    return reward / risk
+
+
+def _downgrade_to_wait(result, rr):
+    """Converts a Buy/Sell result dict to a WAIT result dict in place —
+    used only when entry/stop_loss can't be parsed into a usable risk at
+    all, so there's no valid base to extend a take_profit from. Preserves
+    every other field (chart read, structure, etc.) untouched — only
+    decision-dependent fields change. Leaves a trail in 'reasoning' so a
+    follow-up 'why' question still gets a real answer instead of nothing."""
+
+    original_decision = str(result.get("decision", "")).strip()
+    entry = result.get("entry", "")
+    tp = result.get("take_profit", "")
+    sl = result.get("stop_loss", "")
+
+    result["decision"] = "Wait"
+    result["entry"] = ""
+    result["take_profit"] = ""
+    result["stop_loss"] = ""
+
+    # Best-effort directional lean for the WAIT-only probability fields,
+    # since the model computed these under the Buy/Sell branch (where the
+    # schema requires them to be 0) and never produced honest WAIT-side
+    # numbers. This is a conservative placeholder, not a fabricated
+    # analysis — it never invents a price level.
+    if original_decision.lower() == "buy":
+        result["buy_probability"] = 45
+        result["sell_probability"] = 15
+    elif original_decision.lower() == "sell":
+        result["buy_probability"] = 15
+        result["sell_probability"] = 45
+    else:
+        result["buy_probability"] = result.get("buy_probability") or 25
+        result["sell_probability"] = result.get("sell_probability") or 25
+
+    gate_note = (
+        f"A {original_decision or 'trade'} setup formed near {entry or 'the current level'}, "
+        f"but the entry/stop levels weren't usable enough to compute a reliable "
+        f"reward-to-risk at all, so there's nothing safe to report here. "
+        f"Waiting for a cleaner, clearly-defined invalidation point."
+    )
+    result["buy_trigger"] = gate_note if original_decision.lower() != "sell" else (
+        "A buy doesn't look likely from here without a clearer, valid stop level."
+    )
+    result["sell_trigger"] = gate_note if original_decision.lower() != "buy" else (
+        "A sell doesn't look likely from here without a clearer, valid stop level."
+    )
+
+    # Keep the original numbers visible internally so a follow-up "why"
+    # question can still reference exactly what was rejected and why.
+    existing_reasoning = result.get("reasoning") or ""
+    result["reasoning"] = (
+        f"{gate_note} (Original computed setup: {original_decision} entry {entry}, "
+        f"SL {sl}, TP {tp} — rejected, entry/SL couldn't be parsed into a usable "
+        f"risk.) {existing_reasoning}"
+    ).strip()
+
+    return result
+
+
+def _enforce_min_rr(result):
+    """Annotation + data-quality pass applied to every chart-analysis
+    JSON result. Only touches Buy/Sell decisions; WAIT results pass
+    through untouched. Does NOT gate on the ratio and NEVER edits
+    entry/take_profit/stop_loss:
+
+      - entry/stop_loss parse into a usable risk -> the true R:R is
+        computed and written into "risk_reward" (for schemas that have
+        it), whatever that number is. decision/entry/take_profit/
+        stop_loss are left exactly as the model returned them.
+      - entry/stop_loss unusable (unparseable, or risk == 0) -> there is
+        no valid level to report at all, so the result is downgraded to
+        WAIT. This is a data-quality fallback, not a ratio judgment."""
+    if not isinstance(result, dict):
+        return result
+
+    decision = str(result.get("decision", "")).strip().lower()
+    if decision not in ("buy", "sell"):
+        return result
+
+    rr = _calc_rr(
+        result.get("entry"),
+        result.get("stop_loss"),
+        result.get("take_profit"),
+    )
+
+    if rr is not None:
+        # Always surface the true ratio for schemas with a display field —
+        # this never influences the decision, it's pure transparency.
+        if "risk_reward" in result:
+            result["risk_reward"] = f"{rr:.2f}"
+        return result
+
+    app.logger.warning(
+        "RR ANNOTATION: downgraded %s -> Wait, entry/stop unusable (entry=%s sl=%s tp=%s)",
+        result.get("decision"), result.get("entry"),
+        result.get("stop_loss"), result.get("take_profit"),
+    )
+    return _downgrade_to_wait(result, rr)
+
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -1720,6 +1886,7 @@ USER REQUEST
             )
 
             result = _safe_json(response)
+            result = _enforce_min_rr(result)
 
             # The three plans' JSON schemas (default_prompt.py, pro_json.py,
             # vip_json.py) all use lowercase snake_case keys ("symbol",
@@ -1931,14 +2098,26 @@ Return JSON:
 
                     top_p=PLAN_SETTINGS["top_p"],
 
-                    # Follow-ups only return a short {"answer": ""} object,
-                    # so cap output tightly.
-                    max_output_tokens=512,
+                    # Follow-ups only return a short {"answer": "") object,
+                    # but the PROMPT feeding into this call includes the
+                    # full previous analysis + up to 10 turns of
+                    # conversation history (+ news for pro/vip), which
+                    # grows every follow-up in a session. 512 was too
+                    # tight once combined with "low" thinking below — the
+                    # model would spend the whole budget "thinking" through
+                    # that context and have nothing left to write the
+                    # actual answer, silently returning an empty response
+                    # after a few follow-ups. Raised to give the answer
+                    # itself room to exist.
+                    max_output_tokens=1024,
 
                     # Follow-ups are meant to be quick answers, not a full
-                    # re-analysis, so force "low" here regardless of plan.
+                    # re-analysis, so keep thinking minimal — matches every
+                    # other call in this file (see PLAN_CONFIG) instead of
+                    # the "low" level this used to hardcode, which was the
+                    # actual cause of empty follow-up answers.
                     thinking_config=types.ThinkingConfig(
-                        thinking_level="low"
+                        thinking_level="minimal"
                     )
 
                 )

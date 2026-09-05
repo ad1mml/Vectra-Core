@@ -455,32 +455,55 @@ Potential reward = distance between Entry and TP
 
 R:R = Potential Reward / Risk
 
-Grade:
+Rough grading, for your own calibration only — this is not a
+pass/fail threshold:
 
 < 1.0R
-= UNACCEPTABLE
+= generally not worth the risk on its own
 
-1.0R–1.49R
-= WEAK / POOR
+1.0R–1.9R
+= modest reward; needs unusually strong structure/liquidity behind it
+  to be worth taking
 
-1.5R–1.99R
-= ACCEPTABLE
-
-2.0R–2.99R
-= GOOD
+2.0R–2.9R
+= solid reward on a well-supported setup
 
 3.0R+
-= EXCELLENT
+= strong reward — but verify the target isn't simply far away; weak
+  structure behind an impressive number is still weak structure
 
-BUT:
+R:R IS A VALIDATION/CONFIDENCE INPUT, NOT A TARGET-GENERATION
+MECHANISM, AND NOT A HARD GATE ON THE DECISION.
 
-R:R IS A VALIDATION METRIC, NOT A TARGET-GENERATION MECHANISM.
-
-Never move TP farther away simply to reach 2R or 3R.
+Never move TP farther away simply to reach a bigger ratio.
 
 Never tighten SL simply to improve R:R.
 
-A genuine 1.6R liquidity target is superior to a fabricated 3R target.
+Before finalizing TP: don't stop at the very first opposing-liquidity
+target you find. Glance farther along the same chart, same direction,
+for a genuinely stronger or farther level — the way a real analyst
+double-checks before committing. If a real, reasonably reachable
+farther level exists, prefer it. If not, the nearer one is your
+honest answer, whatever ratio it produces.
+
+A genuine 1.6R liquidity target is superior to a fabricated 3R
+target, full stop — report the real number you land on, always.
+R:R then feeds into your overall confidence/decision alongside
+structural clarity, liquidity strength, and target accessibility. It
+is one input among several — never the single deciding factor, never
+something to be manufactured, and never something that should
+silently gate a Buy/Sell into a WAIT on its own. Use WAIT when the
+setup genuinely doesn't clear a high-probability bar on the merits —
+not mechanically because of one ratio, and not suppressed just
+because the ratio happens to look good.
+
+Never tighten or relocate the SL at any point in this process to
+chase R:R. Never invent a level that is not really on the chart —
+"look farther along real structure" is not the same thing as
+"manufacture a number." If you find yourself inventing precision
+rather than pointing at an actual identifiable level, stop and treat
+that direction as exhausted, then use whatever your honest nearest
+real target is instead.
 
 ====================================================
 17. TP QUALITY VS R:R
@@ -505,6 +528,13 @@ Low accessibility
 Prefer TP A.
 
 The market does not owe the trader a 4R move.
+
+(This preference applies whenever you're comparing two usable
+candidates: don't reach for a weak, low-conviction, low-accessibility
+target just because it produces a bigger number. It works alongside
+the "glance farther before settling" guidance above — the point of
+both is the same: pick the target that's actually real and
+reasonably reachable, not the one that looks best on paper.)
 
 ====================================================
 18. SL/TP CONFLICT RESOLUTION
@@ -588,7 +618,10 @@ Before producing the final answer, silently verify:
 [ ] Did I check premium/discount context?
 [ ] Did I identify intermediate liquidity?
 [ ] Did I avoid manufacturing R:R?
-[ ] Is R:R >= 1.5R?
+[ ] Did I glance farther along the chart for a stronger target before
+    settling on the nearest one?
+[ ] Is the R:R I'm reporting the true, honestly-derived number —
+    nothing stretched, tightened, or invented?
 [ ] Is the SL mathematically valid?
 [ ] Is the TP mathematically valid?
 [ ] Is the price precision valid for the instrument?
