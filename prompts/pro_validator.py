@@ -1,4 +1,4 @@
-chanPRO_VALIDATOR = r"""
+PRO_VALIDATOR = r"""
 PRO VALIDATOR — QUALITY CONTROL WITHOUT SECOND-GUESSING EVERYTHING
 ==================================================================
 
