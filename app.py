@@ -1142,20 +1142,30 @@ def _downgrade_to_wait(result, rr, reason="unusable"):
     result["take_profit"] = ""
     result["stop_loss"] = ""
 
-    # Best-effort directional lean for the WAIT-only probability fields,
-    # since the model computed these under the Buy/Sell branch (where the
-    # schema requires them to be 0) and never produced honest WAIT-side
-    # numbers. This is a conservative placeholder, not a fabricated
-    # analysis — it never invents a price level.
-    if original_decision.lower() == "buy":
-        result["buy_probability"] = 45
-        result["sell_probability"] = 15
-    elif original_decision.lower() == "sell":
-        result["buy_probability"] = 15
-        result["sell_probability"] = 45
-    else:
-        result["buy_probability"] = result.get("buy_probability") or 25
-        result["sell_probability"] = result.get("sell_probability") or 25
+    # Preserve any directional probabilities the model already produced.
+    # Older code overwrote an RR-rejected BUY/SELL with arbitrary 45/15
+    # numbers, which made the result look like a fresh directional analysis
+    # instead of "directional setup found, but RR failed." Only fill missing
+    # values with a neutral fallback.
+    try:
+        bp = float(result.get("buy_probability", 0) or 0)
+    except (TypeError, ValueError):
+        bp = 0
+    try:
+        sp = float(result.get("sell_probability", 0) or 0)
+    except (TypeError, ValueError):
+        sp = 0
+
+    if bp <= 0 and sp <= 0:
+        if original_decision.lower() == "buy":
+            bp, sp = 60, 40
+        elif original_decision.lower() == "sell":
+            bp, sp = 40, 60
+        else:
+            bp, sp = 50, 50
+
+    result["buy_probability"] = bp
+    result["sell_probability"] = sp
 
     if reason == "sub_floor":
         gate_note = (
@@ -1885,10 +1895,18 @@ USER PLAN
 {plan.upper()}
 
 ==========================================================
-PREVIOUS ANALYSIS
+PREVIOUS ANALYSIS (CONTEXT ONLY — NEVER A DECISION)
 ==========================================================
 
 {previous_analysis}
+
+IMPORTANT FRESH-CHART RULE
+--------------------------
+The uploaded image in THIS request is authoritative and always overrides
+the previous analysis. Treat previous_analysis as stale context only.
+Re-read the new chart from scratch. Never preserve a previous BUY/SELL/WAIT
+decision merely because the prior analysis said it. If price structure,
+liquidity, momentum, or risk has changed, the NEW chart wins.
 
 ==========================================================
 USER REQUEST

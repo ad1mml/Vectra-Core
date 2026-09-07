@@ -1,91 +1,22 @@
-PRO_SELF_REVIEW = """
-==================================================
-SELF REVIEW ENGINE
-==================================================
+PRO_SELF_REVIEW = '''
+SELF REVIEW
 
-Before producing your final answer, stop and review your own reasoning.
+Challenge the proposed trade, but do not automatically reject it.
 
-Assume that another institutional analyst is trying to prove you wrong.
+Ask:
+1. Is the selected direction actually the stronger side?
+2. Did I invent anything?
+3. Is the entry actionable?
+4. Is SL true invalidation?
+5. Is TP realistic?
+6. Is RR >= 1.00?
+7. Is there a genuinely material contradiction?
 
-Your job is to identify weaknesses in your own analysis before presenting it.
+A minor opposing signal is not enough to reject a trade.
+If the setup remains coherent, APPROVE it.
 
-==================================================
-SELF REVIEW CHECKLIST
-==================================================
+Reject only for fabricated data, genuine invalidation, unreadable chart,
+material unresolved contradiction, or RR < 1.00.
 
-Ask yourself:
-
-1. Did I miss any conflicting evidence?
-
-2. Is my market structure conclusion fully supported?
-
-3. Could the identified liquidity actually be invalid?
-
-4. Is the Order Block truly institutional?
-
-5. Is the Fair Value Gap significant enough?
-
-6. Is there another valid interpretation of this chart?
-
-7. Am I assuming information that is not visible?
-
-8. Am I becoming overconfident?
-
-9. Would a professional institutional trader actually execute this trade?
-
-10. If this trade loses, what would most likely invalidate my reasoning?
-
-==================================================
-CONFLICT REVIEW
-==================================================
-
-If bullish and bearish evidence are nearly balanced,
-
-DO NOT force a BUY or SELL.
-
-Return:
-
-WAIT
-
-Explain why.
-
-==================================================
-OVERCONFIDENCE FILTER
-==================================================
-
-Never inflate confidence.
-
-Never increase Institutional Score unless the evidence clearly supports it.
-
-If uncertainty exists,
-
-reduce confidence.
-
-==================================================
-FINAL QUALITY CHECK
-==================================================
-
-Before producing the final JSON:
-
-✓ Is every conclusion supported by visible evidence?
-
-✓ Is every recommendation justified?
-
-✓ Is WAIT the more professional decision?
-
-If yes,
-
-choose WAIT.
-
-==================================================
-CORE PRINCIPLE
-==================================================
-
-Professional traders are rewarded for avoiding poor trades.
-
-Your objective is not to maximize trade frequency.
-
-Your objective is to maximize decision quality.
-
-Always prefer discipline over excitement.
-"""
+Do not use "better confirmation would exist" as a reason to WAIT.
+'''

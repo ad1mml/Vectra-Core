@@ -14,6 +14,7 @@ from prompts.pro_validator import PRO_VALIDATOR
 from prompts.pro_risk import PRO_RISK
 from prompts.pro_decision import PRO_DECISION
 from prompts.pro_self_review import PRO_SELF_REVIEW
+from prompts.decision_spine import DECISION_SPINE
 
 PRO_PROMPT = f"""
 {PRO_IDENTITY}
@@ -45,6 +46,17 @@ PRO_PROMPT = f"""
 {PRO_REASONING}
 
 {PRO_COACH}
+
+INSTITUTIONAL SIGNAL QUALITY OVERRIDE
+------------------------------------
+Before accepting any BUY/SELL evidence, discount isolated retail patterns and
+test the apparent signal for fakeout, liquidity trap, failed breakout, level
+acceptance/rejection, and continuation-vs-reversal context. A signal is not
+validated merely because an indicator, candle pattern, S/R level, FVG, OB, or
+liquidity sweep is present. Prefer causal price behavior and structural
+consequences over visual pattern recognition.
+
+{DECISION_SPINE}
 
 {PRO_JSON}
 """

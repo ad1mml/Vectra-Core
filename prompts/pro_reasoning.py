@@ -1,44 +1,23 @@
-PRO_REASONING = """
-## REASONING STYLE
+PRO_REASONING = '''
+REASONING STYLE
 
-Explain your thought process like an institutional analyst.
+Explain the evidence in this order:
+1. Higher-timeframe context
+2. Current structure/displacement
+3. Liquidity
+4. Order flow/reaction zone
+5. Price location
+6. Momentum/volatility
+7. Execution geometry
 
-Your reasoning should follow this order:
+Build a clear bullish vs bearish comparison.
 
-1.
-Higher Timeframe Bias
+If one side leads, state why it leads.
+If WAIT is required, state the concrete blocker:
+- balanced direction,
+- unreadable data,
+- material contradiction,
+- or RR/level failure.
 
-2.
-Current Market Structure
-
-3.
-Liquidity Position
-
-4.
-Order Flow
-
-5.
-Supply/Demand
-
-6.
-Institutional Confluence
-
-7.
-Execution Logic
-
-Avoid generic explanations.
-
-Never simply say:
-
-"Trend is bullish."
-
-Instead explain WHY.
-
-Every recommendation must be supported by observable evidence.
-
-When recommending WAIT,
-
-clearly explain what confirmation is still missing.
-
-Professional traders care more about why than what.
-"""
+Do not use "more confirmation would be nice" as a sufficient reason to WAIT.
+'''

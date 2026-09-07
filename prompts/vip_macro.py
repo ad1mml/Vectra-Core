@@ -13,7 +13,7 @@ MARKET REGIME
 Determine whether conditions are risk-on, risk-off, transition, defensive, or expansion.
 
 MACRO CONFIRMATION
-Technical setups are only stronger if macro agrees. If macro strongly contradicts the technical picture, recommend WAIT.
+Technical setups are only stronger if macro agrees. If macro strongly contradicts the technical picture, report the conflict to the Decision Committee.
 
 PRIORITY
 Macro overrides lower-timeframe technical signals — never ignore major macro conditions just because the chart looks bullish.

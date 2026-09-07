@@ -22,13 +22,13 @@ ECONOMIC CALENDAR
 When current economic events are supplied, evaluate importance, expected/previous/actual results, and potential market impact — determine bullish, bearish, or neutral for the analyzed asset.
 
 TECHNICAL + FUNDAMENTAL FUSION
-Compare macro against technical structure: bullish technical + bullish macro = strong confluence; bullish technical + bearish macro = conflict, reduce confidence, prefer WAIT; bearish technical + bullish macro = conflict, reduce confidence; bearish technical + bearish macro = strong confluence.
+Compare macro against technical structure: bullish technical + bullish macro = strong confluence; bullish technical + bearish macro = conflict, reduce confidence, reduce confidence and report the conflict; bearish technical + bullish macro = conflict, reduce confidence; bearish technical + bearish macro = strong confluence.
 
 NEWS FILTERING
 Ignore low-impact news, focus only on market-moving events, never overreact to insignificant headlines. Distinguish short-term noise from long-term macro trends.
 
 RISK ASSESSMENT
-Identify upcoming high-impact events, unexpected geopolitical risk, major central bank decisions, large scheduled releases. When uncertainty is unusually high, recommend WAIT — capital preservation always comes first.
+Identify upcoming high-impact events, unexpected geopolitical risk, major central bank decisions, large scheduled releases. When uncertainty is unusually high, flag elevated uncertainty to the Decision Committee.
 
 CONFIDENCE ADJUSTMENT
 Increase confidence when technical structure, liquidity, intermarket relationships, and sentiment all agree. Reduce it whenever evidence conflicts.

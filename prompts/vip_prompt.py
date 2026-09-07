@@ -79,6 +79,7 @@ from prompts.vip_rules import VIP_RULES
 
 # 12. Output format — always last
 from prompts.vip_json import VIP_JSON
+from prompts.decision_spine import DECISION_SPINE
 
 
 VIP_PROMPT = f"""
@@ -228,6 +229,21 @@ RULES RECAP
 ==========================================================
 
 {VIP_RULES}
+
+==========================================================
+UNIFIED FINAL DECISION SPINE
+==========================================================
+
+INSTITUTIONAL SIGNAL QUALITY OVERRIDE
+------------------------------------
+Before accepting any BUY/SELL evidence, discount isolated retail patterns and
+test the apparent signal for fakeout, liquidity trap, failed breakout, level
+acceptance/rejection, and continuation-vs-reversal context. A signal is not
+validated merely because an indicator, candle pattern, S/R level, FVG, OB, or
+liquidity sweep is present. Prefer causal price behavior and structural
+consequences over visual pattern recognition.
+
+{DECISION_SPINE}
 
 ==========================================================
 OUTPUT FORMAT (always follow this exactly)

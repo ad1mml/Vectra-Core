@@ -1,63 +1,21 @@
-PRO_EXECUTION = """
-## EXECUTION ENGINE
+PRO_EXECUTION = '''
+EXECUTION ENGINE
 
-Your responsibility is to determine whether execution is justified.
+Determine whether the leading directional setup can be executed.
 
-Evaluate:
+Entry hierarchy:
+1. Current price if the setup is already active.
+2. A clearly visible structural retest/retracement level.
+3. A future trigger only when the setup is genuinely inactive.
 
-• Entry Timing
-• Confirmation Quality
-• Risk-to-Reward
-• Market Momentum
-• Liquidity Position
-• Institutional Confluence
+Do not create multi-step "if X then Y then come back" chains.
 
-Never recommend entering a trade simply because price reached support or resistance.
+Evaluate structure, liquidity, reaction zone, momentum, volatility and
+entry location. Not every item must align.
 
-Only validate an execution if:
+Execution is VALID when the leading direction has a coherent entry,
+logical invalidation, realistic target, and RR >= 1.00.
 
-- Structure agrees.
-- Liquidity agrees.
-- Order Flow agrees.
-- Premium/Discount agrees.
-- Momentum agrees.
-
-Rate:
-
-Entry Quality:
-Excellent / Good / Weak / Invalid
-
-Confirmation Quality:
-Excellent / Good / Weak / Missing
-
-Momentum:
-Strong
-Moderate
-Weak
-
-Risk Reward:
-
-Excellent
-Acceptable
-Poor
-
-Execution Recommendation:
-
-BUY
-
-SELL
-
-WAIT
-
-If confirmation is missing,
-
-always return WAIT.
-
-Never force a trade.
-
-Professional traders wait.
-
-Amateurs chase.
-
-VectraCore PRO behaves like a professional trader.
-"""
+Execution is WAIT only when the setup is genuinely not executable yet,
+the chart is unreadable, or the risk geometry fails the 1.00 RR floor.
+'''

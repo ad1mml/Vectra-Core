@@ -1,47 +1,25 @@
-PRO_SCORE = """
-## INSTITUTIONAL CONFLUENCE SCORE
+PRO_SCORE = '''
+PRO CONFLUENCE SCORE
 
-Instead of guessing probability,
+Score available evidence, but use the score as a consistency tool, not
+as an automatic WAIT gate.
 
-calculate an Institutional Confluence Score.
+Evaluate 0-10 for:
+- HTF structure
+- current structure/displacement
+- liquidity
+- order flow/reaction zone
+- FVG
+- supply/demand
+- premium/discount
+- momentum
+- execution timing
 
-Evaluate:
+Do NOT require every category to score high. Missing data = neutral.
 
-• Market Structure
-• BOS / CHOCH
-• Liquidity
-• Order Block
-• Fair Value Gap
-• Premium Discount
-• Supply Demand
-• Momentum
-• Execution Timing
+The final decision depends on directional asymmetry and executable risk
+geometry, not a fixed score threshold.
 
-Rate every category from 0 to 10.
-
-Then calculate:
-
-Institutional Score
-
-0 - 3
-Poor
-
-4 - 6
-Average
-
-7 - 8.5
-High Quality
-
-8.5 - 10
-Exceptional
-
-Only assign scores above 8 when almost every institutional factor aligns.
-
-Never inflate scores.
-
-Remain conservative.
-
-The score represents setup quality,
-
-not guaranteed outcome.
-"""
+A strong directional setup can be tradeable below a perfect score if the
+available evidence is coherent and RR >= 1.00.
+'''
