@@ -335,34 +335,35 @@ def get_usage():
 
 def save_usage(data):
     _save_json("usage.json", data)   
-# Chart-upload limits and their reset window, per plan. VIP is unlimited
-# (handled separately in check_user_limits) so it isn't listed here.
-# Chat/questions are unlimited on every plan now, so there's no
-# corresponding limits dict for "question" anymore.
+# Chart-upload limits per plan. VIP is unlimited (handled separately in
+# check_user_limits) so it isn't listed here. Chat/questions are unlimited
+# on every plan now, so there's no corresponding limits dict for "question".
 CHART_LIMITS = {
-    "default": 3,
-    "pro": 10,
+    "default": 20,
+    "pro": 150,
 }
 
-CHART_RESET_HOURS = {
-    "default": 8,
-    "pro": 12,
-}
+
+def _next_month_first(dt):
+    """Midnight UTC on the 1st of the month AFTER dt — the one and only
+    reset instant, shared by every user regardless of when they signed up."""
+    if dt.month == 12:
+        return datetime(dt.year + 1, 1, 1)
+    return datetime(dt.year, dt.month + 1, 1)
 
 
 def initialize_user_usage(usage, email, plan):
 
     if email not in usage:
 
-        reset_hours = CHART_RESET_HOURS.get(plan, 8)
-
+        # A brand-new user gets their full 20/150 credits right away, good
+        # until the 1st of next month — even if they signed up on the 15th.
+        # From then on everyone resets on the same calendar date.
         usage[email] = {
 
             "charts_used": 0,
 
-            "charts_reset": (
-                datetime.utcnow() + timedelta(hours=reset_hours)
-            ).isoformat(),
+            "charts_reset": _next_month_first(datetime.utcnow()).isoformat(),
 
         }
 
@@ -370,22 +371,21 @@ def initialize_user_usage(usage, email, plan):
 def reset_usage_if_needed(usage, email, plan):
 
     # -----------------------------
-    # Reset chart usage (window depends on plan — Default: 8h, Pro: 12h)
+    # Reset chart usage — always on the 1st of the month at 00:00 UTC,
+    # the same instant for every user regardless of plan or signup date.
     # -----------------------------
 
     chart_reset = datetime.fromisoformat(
         usage[email]["charts_reset"]
     )
 
-    if datetime.utcnow() >= chart_reset:
+    now = datetime.utcnow()
+
+    if now >= chart_reset:
 
         usage[email]["charts_used"] = 0
 
-        reset_hours = CHART_RESET_HOURS.get(plan, 8)
-
-        usage[email]["charts_reset"] = (
-            datetime.utcnow() + timedelta(hours=reset_hours)
-        ).isoformat()
+        usage[email]["charts_reset"] = _next_month_first(now).isoformat()
 
     return usage
 def check_user_limits(usage, email, plan, request_type):
@@ -1384,6 +1384,36 @@ def verify_code():
     return jsonify({"status": "success", "email": email, "plan": account["plan"]}), 200
 
 
+@app.route("/usage", methods=["GET"])
+def get_usage_route():
+    """Lets the frontend show 'X/20 charts used this month' and a countdown
+    to the next reset at any time — not just right after an upload."""
+    email = (request.args.get("email") or "").strip().lower()
+    plan = (request.args.get("plan") or "default").strip().lower()
+    if not email:
+        return jsonify({"error": "Email required"}), 400
+    if plan not in VALID_PLANS:
+        plan = "default"
+
+    if plan == "vip":
+        return jsonify({"unlimited": True}), 200
+
+    usage = get_usage()
+    usage = initialize_user_usage(usage, email, plan)
+    usage = reset_usage_if_needed(usage, email, plan)
+    save_usage(usage)
+
+    limit = CHART_LIMITS.get(plan, 20)
+    used = usage[email]["charts_used"]
+    return jsonify({
+        "unlimited": False,
+        "charts_used": used,
+        "charts_limit": limit,
+        "charts_remaining": max(0, limit - used),
+        "resets_at": usage[email]["charts_reset"],
+    }), 200
+
+
 @app.route("/account", methods=["GET"])
 def get_account():
     """Look up which plan an email is on — useful once each plan routes to
@@ -2007,6 +2037,22 @@ USER REQUEST
             _save_json(CHART_MEMORY_FILE, memory)
 
             result["session_id"] = active_session["id"]
+
+            # Chart-upload counter for the frontend to show (e.g. "7/20
+            # charts used — resets in 12 days"). VIP has no limit, so it
+            # gets no usage block at all.
+            if plan != "vip":
+                limit = CHART_LIMITS.get(plan)
+                used = usage.get(user_email, {}).get("charts_used", 0)
+                reset_at = usage.get(user_email, {}).get("charts_reset")
+                if limit is not None:
+                    result["usage"] = {
+                        "charts_used": used,
+                        "charts_limit": limit,
+                        "charts_remaining": max(0, limit - used),
+                        "resets_at": reset_at,
+                    }
+
             return jsonify(result)
         # ==========================================================
         # QUESTION LIMIT CHECK (applies to MODE 2 + MODE 3 — any

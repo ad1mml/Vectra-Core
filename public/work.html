@@ -1021,6 +1021,7 @@
         <div class="header-actions">
             <button class="feedback-btn" id="open-feedback-btn"><span class="feedback-btn-full">Send Feedback</span><span class="feedback-btn-short">Feedback</span></button>
             <div id="navbar-plan-badge" class="navbar-plan-badge plan-default"><span class="badge-label">✨ DEFAULT</span></div>
+            <div id="credits-badge" class="user-badge" style="display:none;" title=""></div>
 
             <a href="pricing.html" class="upgrade-btn"><span class="upgrade-btn-full">⬆ Upgrade Plan</span><span class="upgrade-btn-short">⬆ Upgrade</span></a>
             <div class="user-badge" id="current-user">guest@vectracore.ai</div>
@@ -1193,6 +1194,10 @@
                     currentSessionId = result.session_id;
                 }
 
+                if (result.usage) {
+                    updateCreditsBadge(result.usage);
+                }
+
                 if (sessionsEnabled && currentSessionId) {
                     // Pro/VIP: replay the full thread from the server so the
                     // viewport always matches exactly what's saved (and what
@@ -1321,13 +1326,14 @@
 
         let upgradeCountdownInterval = null;
 
-        // Breaks a seconds count into {h, m, s} for the segmented clock.
+        // Breaks a seconds count into {d, h, m, s} for the segmented clock.
         function splitCountdown(totalSeconds) {
             totalSeconds = Math.max(0, totalSeconds);
-            const h = Math.floor(totalSeconds / 3600);
+            const d = Math.floor(totalSeconds / 86400);
+            const h = Math.floor((totalSeconds % 86400) / 3600);
             const m = Math.floor((totalSeconds % 3600) / 60);
             const s = totalSeconds % 60;
-            return { h, m, s };
+            return { d, h, m, s };
         }
 
         function pad2(n) {
@@ -1335,8 +1341,12 @@
         }
 
         function renderClockSegments(totalSeconds) {
-            const { h, m, s } = splitCountdown(totalSeconds);
+            const { d, h, m, s } = splitCountdown(totalSeconds);
+            const daySegment = d > 0
+                ? `<div class="cd-segment"><span class="cd-value" id="cd-d">${d}</span><span class="cd-unit">Days</span></div><span class="cd-colon">:</span>`
+                : '';
             return `
+                ${daySegment}
                 <div class="cd-segment"><span class="cd-value" id="cd-h">${pad2(h)}</span><span class="cd-unit">Hours</span></div>
                 <span class="cd-colon">:</span>
                 <div class="cd-segment"><span class="cd-value" id="cd-m">${pad2(m)}</span><span class="cd-unit">Min</span></div>
@@ -1356,7 +1366,7 @@
             const hasCountdown = typeof data.retry_after_seconds === 'number' && data.retry_after_seconds > 0;
 
             // Chat is unlimited on every plan now — the only remaining
-            // rate limit is on chart uploads (Default: 3/8h, Pro: 10/12h).
+            // rate limit is on chart uploads (Default: 20/month, Pro: 150/month).
             const resetLabel = data.type === 'chart'
                 ? 'Your chart-upload limit resets in'
                 : 'Resets in';
@@ -1398,7 +1408,9 @@
                         return;
                     }
 
-                    const { h, m, s } = splitCountdown(remaining);
+                    const { d, h, m, s } = splitCountdown(remaining);
+                    const dEl = document.getElementById('cd-d');
+                    if (dEl) dEl.textContent = d;
                     document.getElementById('cd-h').textContent = pad2(h);
                     document.getElementById('cd-m').textContent = pad2(m);
                     document.getElementById('cd-s').textContent = pad2(s);
@@ -1410,6 +1422,40 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        // =====================================================
+        // CREDITS BADGE — shows "X/20 charts left" (or 150 for
+        // Pro, hidden entirely for VIP since it's unlimited).
+        // Updated on page load and again after every chart
+        // upload from the usage block the backend attaches.
+        // =====================================================
+        function updateCreditsBadge(usage) {
+            const el = document.getElementById('credits-badge');
+            if (!el) return;
+            if (!usage || usage.unlimited) {
+                el.style.display = 'none';
+                return;
+            }
+            el.style.display = '';
+            el.textContent = `${usage.charts_remaining}/${usage.charts_limit} charts left`;
+            if (usage.resets_at) {
+                const resetDate = new Date(usage.resets_at + 'Z');
+                el.title = `Resets ${resetDate.toLocaleDateString()} at 00:00`;
+            }
+        }
+
+        async function refreshCreditsBadge() {
+            if (currentPlan === 'vip') {
+                updateCreditsBadge({ unlimited: true });
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE_URL}/usage?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
+                updateCreditsBadge(await response.json());
+            } catch (err) {
+                console.error('Failed to load chart-upload usage:', err);
+            }
         }
 
         // =====================================================
@@ -1661,6 +1707,8 @@ if(plan === "vip"){
         <span class="badge-label">👑 VIP</span>
     `;
 }
+
+refreshCreditsBadge();
                  
     </script>
 </body>
