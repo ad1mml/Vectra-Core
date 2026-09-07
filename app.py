@@ -42,7 +42,7 @@ import secrets
 import hashlib
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from prompts.followup_prompt import FOLLOWUP_PROMPT_BASE
+from prompts.followup_prompt import FOLLOWUP_PROMPT as FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
 from prompts.default_prompt import DEFAULT_PROMPT
 from prompts.pro_prompt import PRO_PROMPT
