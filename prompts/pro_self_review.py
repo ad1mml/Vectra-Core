@@ -1,22 +1,28 @@
-PRO_SELF_REVIEW = '''
-SELF REVIEW
+PRO_SELF_REVIEW = r"""
+PRO SELF-REVIEW — FALSIFY THE THESIS, THEN COMMIT
+=================================================
 
-Challenge the proposed trade, but do not automatically reject it.
+Silently challenge the proposed setup:
 
-Ask:
-1. Is the selected direction actually the stronger side?
-2. Did I invent anything?
-3. Is the entry actionable?
-4. Is SL true invalidation?
-5. Is TP realistic?
-6. Is RR >= 1.00?
-7. Is there a genuinely material contradiction?
+1. What is the strongest structural reason for the chosen direction?
+2. What is the strongest opposing fact?
+3. Is that opposing fact major or merely micro/cosmetic?
+4. Could the apparent signal be a fakeout, stop-run, inducement, or failed
+   auction?
+5. Did price actually accept/reject the important level?
+6. Has later price invalidated the thesis?
+7. Is continuation or reversal more coherent?
+8. Is Entry executable now?
+9. Does SL represent real invalidation?
+10. Is TP a realistic destination?
+11. Is RR >= 1.00?
+12. If WAIT, what exact hard blocker caused it?
 
-A minor opposing signal is not enough to reject a trade.
-If the setup remains coherent, APPROVE it.
+IMPORTANT
+---------
+Falsification is a quality-control step, not a hidden requirement for perfect
+certainty. If the thesis survives, COMMIT.
 
-Reject only for fabricated data, genuine invalidation, unreadable chart,
-material unresolved contradiction, or RR < 1.00.
-
-Do not use "better confirmation would exist" as a reason to WAIT.
-'''
+Do not use "I could wait for more confirmation" as a WAIT reason when the
+current setup is already valid.
+"""

@@ -1,21 +1,33 @@
-PRO_EXECUTION = '''
-EXECUTION ENGINE
+PRO_EXECUTION = r"""
+PRO EXECUTION ENGINE — TURN THESIS INTO A CURRENT TRADE
+=======================================================
 
-Determine whether the leading directional setup can be executed.
+ROLE
+----
+Once the decision process identifies a leading directional thesis, find the
+best honest execution available on the current chart.
 
-Entry hierarchy:
-1. Current price if the setup is already active.
-2. A clearly visible structural retest/retracement level.
-3. A future trigger only when the setup is genuinely inactive.
+ENTRY PRIORITY
+--------------
+1. Existing valid market-entry area if price is already in the setup zone.
+2. Clearly visible validated retest/mitigation area.
+3. Accepted breakout/retest level.
+4. Other chart-grounded entry level directly supported by structure.
 
-Do not create multi-step "if X then Y then come back" chains.
+Do not create a future confirmation loop when the setup is already executable.
+Do not demand a perfect entry if a reasonable one is already present.
+Do not invent a price outside the visible chart geometry.
 
-Evaluate structure, liquidity, reaction zone, momentum, volatility and
-entry location. Not every item must align.
+ENTRY QUALITY CHECK
+-------------------
+- Does entry sit on/near a meaningful structural location?
+- Is price already extended from the thesis location?
+- Is the entry likely to be invalidated by ordinary noise?
+- Does entry preserve a realistic structural SL?
+- Is the route to TP plausible?
 
-Execution is VALID when the leading direction has a coherent entry,
-logical invalidation, realistic target, and RR >= 1.00.
-
-Execution is WAIT only when the setup is genuinely not executable yet,
-the chart is unreadable, or the risk geometry fails the 1.00 RR floor.
-'''
+OUTPUT
+------
+Provide one primary executable entry concept and, only when required by the
+schema, a concise contingency/trigger. Avoid multiple competing setups.
+"""

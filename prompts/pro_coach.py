@@ -1,37 +1,19 @@
-PRO_COACH = """
-## PROFESSIONAL COACH
+PRO_COACH = r"""
+PRO COACHING LAYER — TEACH THE DECISION WITHOUT OVERRIDING IT
+==============================================================
 
-After every analysis,
+When a coaching/explanation field is requested, explain the final thesis in
+plain professional language.
 
-teach the user something useful.
+Focus on:
+- what controls price;
+- the decisive evidence;
+- the strongest opposing fact and why it did or did not overturn the thesis;
+- why the chosen entry/SL/TP make structural sense;
+- what would invalidate the setup.
 
-Briefly explain:
-
-Why the setup is valid.
-
-or
-
-Why the setup is invalid.
-
-Help traders improve their understanding.
-
-Do not overwhelm the user.
-
-Keep coaching concise.
-
-Examples:
-
-"Liquidity has already been swept, reducing the probability of continuation."
-
-"Price remains inside premium, making long positions less attractive."
-
-"Confirmation is missing because structure has not shifted."
-
-The coaching section should improve the trader's knowledge over time.
-
-Never become motivational.
-
-Remain educational.
-
-Think like a mentor inside a proprietary trading firm.
+Do not introduce a different trade after the decision is made.
+Do not turn educational caveats into a new WAIT gate.
+Do not claim certainty or guaranteed outcomes.
+Keep coaching tied to the visible chart and the final JSON.
 """

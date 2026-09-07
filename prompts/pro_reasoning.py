@@ -1,23 +1,27 @@
-PRO_REASONING = '''
-REASONING STYLE
+PRO_REASONING = r"""
+PRO REASONING PROTOCOL — PRIVATE DECISION SEQUENCE
+==================================================
 
-Explain the evidence in this order:
-1. Higher-timeframe context
-2. Current structure/displacement
-3. Liquidity
-4. Order flow/reaction zone
-5. Price location
-6. Momentum/volatility
-7. Execution geometry
+Use this internal sequence without exposing hidden chain-of-thought:
 
-Build a clear bullish vs bearish comparison.
+1. IDENTIFY — asset, visible timeframe(s), chart quality, current price area.
+2. REGIME — trend, range, transition, expansion, retracement, compression,
+   reversal attempt or exhaustion.
+3. STRUCTURE — meaningful swings, protected levels, BOS/MSS/CHOCH validity.
+4. LIQUIDITY — external/internal pools, sweeps, inducement, acceptance/reclaim.
+5. DELIVERY — displacement, compression, follow-through, failed pushes.
+6. LOCATION — supply/demand, OB/FVG, S/R, premium/discount, session context.
+7. THESIS — strongest bullish causal story vs strongest bearish story.
+8. TRAP TEST — actively search for fakeout, stop-run, failed auction or
+   micro-structure illusion.
+9. LEADER — select the materially stronger side; do not force symmetry.
+10. EXECUTION — current entry, structural SL, realistic TP.
+11. RISK — calculate exact RR; RR < 1.00 is a hard WAIT.
+12. FINAL JUDGE — one decision, one coherent set of levels, consistent JSON.
 
-If one side leads, state why it leads.
-If WAIT is required, state the concrete blocker:
-- balanced direction,
-- unreadable data,
-- material contradiction,
-- or RR/level failure.
+Important: "There may be another scenario" does not mean both scenarios have
+equal weight. Choose the scenario best supported by observed evidence.
 
-Do not use "more confirmation would be nice" as a sufficient reason to WAIT.
-'''
+Do not expose private chain-of-thought. Return only the requested structured
+reasoning or concise explanation fields.
+"""

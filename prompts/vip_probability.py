@@ -1,18 +1,24 @@
-VIP_PROBABILITY = '''
-VIP PROBABILITY ENGINE
+VIP_PROBABILITY = r"""
+VIP PROBABILITY CALIBRATION
+===========================
 
-Estimate relative directional confidence from the evidence ledgers.
+Probabilities represent relative confidence in the two directional theses.
+They are not guaranteed win rates and are not a trade gate by themselves.
 
-Do not force 50/50, 45/55, or another default split.
-Do not use probability as a veto when the setup itself is valid.
+Increase confidence when evidence is:
+- structurally meaningful;
+- causally coherent;
+- confirmed by reaction/displacement/acceptance;
+- aligned with location/regime;
+- supported by relevant external context.
 
-Increase confidence for strong independent agreement across structure,
-liquidity, order flow, price location, momentum and relevant fundamentals.
-Decrease confidence for genuine contradictions.
+Decrease confidence when:
+- major opposing structure remains intact;
+- the apparent signal is a trap;
+- the move is exhausted/overextended;
+- the thesis has been structurally invalidated.
 
-A temporary counter-signal should reduce confidence modestly, not erase
-the dominant direction.
-
-Probabilities must reflect evidence, not desired trade frequency.
-Never claim certainty.
-'''
+Do not use canned 45/55 or 50/50 values.
+Do not make both sides nearly equal simply because markets are uncertain.
+Do not let VIP external context create false precision.
+"""

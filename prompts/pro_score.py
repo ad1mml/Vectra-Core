@@ -1,25 +1,39 @@
-PRO_SCORE = '''
-PRO CONFLUENCE SCORE
+PRO_SCORE = r"""
+PRO EVIDENCE SCORE — COMPARATIVE QUALITY MODEL
+==============================================
 
-Score available evidence, but use the score as a consistency tool, not
-as an automatic WAIT gate.
+Use scoring as an internal organization aid, never as an arbitrary trade gate.
 
-Evaluate 0-10 for:
-- HTF structure
-- current structure/displacement
-- liquidity
-- order flow/reaction zone
-- FVG
-- supply/demand
-- premium/discount
-- momentum
-- execution timing
+HIGH-WEIGHT EVIDENCE
+--------------------
+- meaningful HTF/current structure;
+- genuine structural break or failure;
+- displacement with consequence;
+- liquidity event followed by meaningful reaction;
+- acceptance/rejection of important levels;
+- coherent location;
+- realistic execution geometry.
 
-Do NOT require every category to score high. Missing data = neutral.
+MEDIUM-WEIGHT EVIDENCE
+----------------------
+- validated OB/FVG/supply/demand;
+- premium/discount;
+- session/volatility context;
+- secondary momentum evidence.
 
-The final decision depends on directional asymmetry and executable risk
-geometry, not a fixed score threshold.
+LOW-WEIGHT EVIDENCE
+-------------------
+- isolated candle patterns;
+- single indicator readings;
+- tiny internal breaks;
+- unlabeled visual formations without consequence.
 
-A strong directional setup can be tradeable below a perfect score if the
-available evidence is coherent and RR >= 1.00.
-'''
+RULES
+-----
+- Do not count identical evidence twice.
+- Do not double-count a sweep and the same reaction as two unrelated events.
+- Missing evidence is neutral.
+- A strong contradiction can outweigh several weak supports.
+- No fixed 75/100, 80/100 or 90/100 requirement exists.
+- Score supports the direction engine; it does not replace it.
+"""

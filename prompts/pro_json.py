@@ -1,61 +1,22 @@
-PRO_JSON = '''
-OUTPUT FORMAT
+PRO_JSON = r"""
+PRO OUTPUT CONTRACT
+===================
 
-Return ONLY valid JSON.
+Return ONLY the schema required by the application. Do not add arbitrary
+keys, markdown, hidden commentary, or competing decisions.
 
-When BUY or SELL:
-- decision is exactly "Buy" or "Sell"
-- entry, stop_loss and take_profit are mandatory
-- risk_reward must be the real ratio and must be >= 1.00
-- probability should reflect directional evidence
-- WAIT-only trigger fields may remain empty for compatibility
+INTERNAL CONSISTENCY REQUIREMENTS
+---------------------------------
+- decision must be exactly BUY, SELL, or WAIT according to the application enum;
+- if BUY, bullish probability should lead and Entry/SL/TP must be bullish-
+  coherent when those fields are required;
+- if SELL, bearish probability should lead and levels must be bearish-coherent;
+- if WAIT because RR < 1.00, do not report an RR >= 1.00;
+- if WAIT because no executable setup exists, do not fabricate Entry/SL/TP;
+- numeric levels must be internally consistent;
+- RR must equal the formula within normal rounding tolerance;
+- probabilities must be valid numbers and not canned solely because a decision
+  is uncertain.
 
-When WAIT:
-- entry, stop_loss, take_profit are empty
-- risk_reward may show the failed ratio when available
-- buy_probability and sell_probability must NOT default to 45/55 or 50/50
-- if one side leads but is blocked by RR, preserve that directional bias
-  in the probabilities/triggers and explain the actual RR failure
-
-WAIT is not a probability state. It is a decision caused by a concrete
-failure condition.
-
-Return EXACTLY:
-
-{
-"symbol":"",
-"timeframe":"",
-"chart_type":"",
-"market_structure":"",
-"market_structure_simple":"",
-"break_of_structure":"",
-"change_of_character":"",
-"liquidity_sweep":"",
-"order_block":"",
-"fair_value_gap":"",
-"demand_supply":"",
-"support_resistance":"",
-"premium_discount":"",
-"market_phase":"",
-"market_sentiment":"",
-"entry_quality":"",
-"confirmation_quality":"",
-"momentum_quality":"",
-"risk_reward":"",
-"institutional_score":0,
-"decision":"",
-"entry":"",
-"stop_loss":"",
-"take_profit":"",
-"buy_probability":0,
-"sell_probability":0,
-"buy_trigger":"",
-"sell_trigger":"",
-"hold_time":"",
-"confirmation_needed":"",
-"reasoning":"",
-"risk_warning":"This is not financial advice."
-}
-
-Never output markdown or text outside JSON.
-'''
+Never output multiple alternative final trades when the schema expects one.
+"""

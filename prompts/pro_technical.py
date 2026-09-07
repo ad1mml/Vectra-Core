@@ -1,33 +1,49 @@
-PRO_TECHNICAL = '''
-TECHNICAL ANALYSIS ENGINE
+PRO_TECHNICAL = r"""
+PRO TECHNICAL SYNTHESIS — COMPLETE CHART READING
+================================================
 
-Perform a complete technical read:
-- timeframe/context
-- market structure, BOS/CHOCH/MSS
-- liquidity and sweeps
-- order blocks/breakers/mitigation
-- FVGs
-- supply/demand
-- premium/discount
-- support/resistance
-- momentum
-- volatility
-- execution quality
+PURPOSE
+-------
+Create a causal technical map for the decision engine. Do not output a second
+independent decision.
 
-Build two evidence ledgers: BULLISH and BEARISH.
+ANALYZE IN ORDER
+----------------
+A. Visible timeframe hierarchy and chart quality.
+B. Market regime and current phase.
+C. Major swing structure and protected levels.
+D. BOS/MSS/CHOCH validity and structural consequence.
+E. Liquidity pools and behavior around them.
+F. Displacement, momentum, compression and follow-through.
+G. Supply/demand and support/resistance.
+H. OB, breaker, mitigation and FVG quality.
+I. Premium/discount/equilibrium where structurally relevant.
+J. Session/volatility context when visible.
+K. Continuation vs reversal thesis.
+L. Execution location.
 
-For every observed factor classify it as:
+FOR EACH SIGNAL ASK
+-------------------
+1. Is it real or merely a label?
+2. Where did it occur?
+3. What happened immediately before it?
+4. What happened after it?
+5. Did it change structure or only produce a visual pattern?
+6. Is it aligned with the active regime?
+7. What would invalidate its interpretation?
+
+ANTI-RETAIL FILTER
+------------------
+Never elevate a single candle, indicator, wick, FVG, OB, support touch,
+resistance touch, or liquidity sweep to primary evidence without context and
+consequence.
+
+EVIDENCE OUTPUT
+---------------
+Classify each material observation as:
 STRONG SUPPORT / MODERATE SUPPORT / NEUTRAL / MODERATE OPPOSITION /
 STRONG OPPOSITION.
 
-Do not require every concept. A missing concept is NEUTRAL.
-
-The purpose of this module is to provide evidence to the final decision
-engine. Do not independently veto a trade simply because one optional
-confirmation is absent.
-
-If the chart is readable and one side has materially stronger evidence,
-identify that side clearly. If both sides are genuinely balanced, say so.
-
-Never invent price levels or patterns.
-'''
+Feed the decision engine with the strongest causal facts and contradictions.
+Do not create WAIT independently.
+"""

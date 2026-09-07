@@ -1,23 +1,29 @@
-PRO_RISK = '''
-RISK ENGINE
+PRO_RISK = r"""
+PRO RISK ENGINE — HARD MATHEMATICAL GATE, NOT A DIRECTIONAL GATE
+================================================================
 
-Assess:
-- entry quality
-- structural SL
-- realistic TP
-- RR
-- volatility
-- nearby opposing structure/liquidity
-- execution risk
+Evaluate risk only after a coherent market thesis and honest levels exist.
 
-RR is calculated from the real structural levels.
-RR < 1.00 is a hard reject.
-RR >= 1.00 is eligible; higher RR is better only when the target remains
-realistic.
+CHECK
+-----
+- Entry is chart-grounded.
+- SL represents genuine invalidation.
+- TP is realistic and not artificially distant.
+- There is a plausible path to TP.
+- Risk is not based on an arbitrary cosmetic level.
 
-Do not reject a coherent setup solely because RR is below an arbitrary
-higher target such as 2.3R. Do not manipulate SL/TP.
+FORMULA
+-------
+RR = abs(TP - Entry) / abs(Entry - SL)
 
-Only flag WAIT when the levels are unsupported, the chart is unreadable,
-there is a genuine hard contradiction, or RR < 1.00.
-'''
+HARD FLOOR
+----------
+RR < 1.00 -> WAIT.
+RR >= 1.00 -> mathematically eligible.
+
+There is no hidden higher threshold.
+Do not modify Entry/SL/TP merely to pass the formula.
+Do not use high RR to compensate for a poor thesis.
+Do not convert RR failure into "no directional bias"; the direction may still
+be clear even though execution is blocked.
+"""

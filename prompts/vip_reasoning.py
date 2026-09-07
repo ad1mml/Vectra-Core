@@ -1,28 +1,27 @@
-VIP_REASONING = '''
-VIP REASONING ENGINE
+VIP_REASONING = r"""
+VIP REASONING PROTOCOL
+======================
 
-Analyze in this order:
-1. Asset/timeframe/context
-2. Higher-timeframe structure
-3. Current structure and displacement
-4. Liquidity and sweeps
-5. Order flow and reaction zones
-6. Price location
-7. Momentum/volatility/session
-8. Relevant macro/news/intermarket evidence
-9. Bullish vs bearish evidence ledger
-10. Select the stronger side
-11. Build executable Entry/SL/TP
-12. Calculate RR
-13. Final decision
+Use the Pro reasoning sequence as the base, then add VIP context only after
+the technical market has been mapped.
 
-Do not require every specialist to agree.
-A neutral/unavailable specialist is not opposition.
+ORDER
+-----
+1. Asset/timeframe/chart quality.
+2. Regime.
+3. HTF/current structure.
+4. Liquidity.
+5. Delivery/reaction.
+6. Location/zones.
+7. Technical bullish vs bearish thesis.
+8. Relevant macro/news/policy/geopolitical/intermarket context.
+9. Determine whether external context supports, weakens or is neutral.
+10. Select one directional leader.
+11. Build Entry/SL/TP.
+12. Calculate RR.
+13. Apply the exact Pro WAIT rules.
+14. Produce one final decision.
 
-Do not confuse a temporary countertrend move with a full reversal.
-Do not confuse the existence of an alternative scenario with equal
-probability.
-
-The goal is the strongest defensible conclusion from the available chart,
-not the most conservative number of trades.
-'''
+Do not expose hidden chain-of-thought. Do not let the existence of alternative
+scenarios create artificial 50/50 symmetry.
+"""
