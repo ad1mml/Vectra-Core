@@ -4,7 +4,7 @@
 // app opens even on a flaky connection — it never caches API calls, so
 // chart analysis, login, and everything else always hits the live server.
 
-const CACHE_NAME = "vectracore-shell-v1";
+const CACHE_NAME = "vectracore-shell-v2";
 
 const APP_SHELL = [
   "/",
