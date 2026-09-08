@@ -567,6 +567,14 @@
         }
     </style>
     <link rel="icon" type="image/jpeg" href="/logo.jpeg">
+
+    <!-- PWA: makes VectraCore installable as an app on Android/desktop -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#050A1A">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="VectraCore">
 </head>
 <body>
 
@@ -580,7 +588,7 @@
             <a href="blog/ai-trading-chart-analysis.html">Blog</a>
             <a href="privacy-policy.html">Privacy Policy</a>
             <a href="#">Terms</a>
-            <button class="cta-btn trigger-popup-work" style="padding: 10px 20px; font-size: 0.9rem; box-shadow: none;">Launch App</button>
+            <button id="launch-app-btn" class="cta-btn trigger-popup-work" style="padding: 10px 20px; font-size: 0.9rem; box-shadow: none;">Launch App</button>
         </div>
     </header>
 
@@ -712,6 +720,49 @@
         const API_BASE_URL = window.location.protocol.startsWith('http')
             ? window.location.origin
             : 'http://127.0.0.1:5000';
+
+        // --- PWA: install prompt wired to the "Launch App" button ---------
+        // Chrome/Edge/Android fire this instead of auto-showing an install
+        // banner, so we stash it and trigger it ourselves on click. This
+        // listener is attached before the existing trigger-popup-work
+        // listener further down the page, so it always fires first: on
+        // click we (optionally) show the native "Install VectraCore?"
+        // prompt, then the existing login/redirect flow continues exactly
+        // as before, install or not.
+        let deferredInstallPrompt = null;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+        });
+
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js').catch(() => {
+                    // Non-fatal — the site still works fully without it.
+                });
+            });
+        }
+
+        const launchAppBtn = document.getElementById('launch-app-btn');
+        if (launchAppBtn) {
+            launchAppBtn.addEventListener('click', async () => {
+                if (deferredInstallPrompt) {
+                    const promptToShow = deferredInstallPrompt;
+                    deferredInstallPrompt = null;
+                    promptToShow.prompt();
+                    // We don't block on the user's choice — whether they
+                    // install or dismiss, "Launch App" still opens VectraCore
+                    // in the browser right away via the existing flow below.
+                    promptToShow.userChoice.catch(() => {});
+                }
+            });
+        }
+        // --------------------------------------------------------------
 
         const modal = document.getElementById('registration-modal');
         const closeBtn = document.getElementById('modal-close');
