@@ -129,11 +129,12 @@ const params=new URLSearchParams(location.search); let selected=params.get('plan
 const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), trialEl=document.getElementById('trial'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
 function renderDetails(){ const plan=PLANS[selected], p=plan[cycle]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=p.price+' <small>'+p.period+'</small>'; trialEl.textContent=p.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent='Subscribe to '+plan.name+' '+(cycle==='monthly'?'monthly':'annually')+' through PayPal.'; document.querySelectorAll('.cycle').forEach(b=>b.classList.toggle('active',b.dataset.cycle===cycle)); renderPaypal(p.id); }
 let paypalRenderedId=null;
-const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
 const emailInput = document.getElementById('billingEmail');
 const emailError = document.getElementById('emailError');
 const storedEmail = localStorage.getItem('vectracore_email') || params.get('email') || '';
 if (storedEmail) emailInput.value = storedEmail;
+
+const API_BASE_URL = 'https://www.vectracore.pythonanywhere.com';
 
 async function createSubscriptionOnServer(planId){
   const email = emailInput.value.trim().toLowerCase();
@@ -150,7 +151,7 @@ async function createSubscriptionOnServer(planId){
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
+    body: JSON.stringify({
       email: email,
       plan_id: planId,
       plan: selected,
