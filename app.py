@@ -1301,50 +1301,62 @@ _FIELD_FALLBACKS = {
 def _no_na_result(result):
     """Guarantees no field in a chart-analysis result is a bare N/A when it
     reaches the frontend. Only rewrites presentation of missing data —
-    never fabricates prices, levels, or a direction the model didn't give."""
-    if not isinstance(result, dict):
-        return result
+    never fabricates prices, levels, or a direction the model didn't give.
 
-    decision = str(result.get("decision", "")).strip().lower()
+    Recursive: walks nested dicts/lists too, since the exact JSON schema
+    (pro_json.py) is described in prose, not as a literal field map, so
+    N/A could in principle show up inside a nested object instead of only
+    at the top level."""
+    decision = ""
+    if isinstance(result, dict):
+        decision = str(result.get("decision", "")).strip().lower()
+    return _no_na_walk(result, decision)
 
-    for key, value in list(result.items()):
-        if not _is_na(value):
-            continue
 
-        key_lower = key.lower()
+def _no_na_walk(node, decision):
+    if isinstance(node, dict):
+        for key, value in list(node.items()):
+            if isinstance(value, (dict, list)):
+                node[key] = _no_na_walk(value, decision)
+                continue
 
-        if key_lower in _FIELD_FALLBACKS:
-            result[key] = _FIELD_FALLBACKS[key_lower]
+            if not _is_na(value):
+                continue
 
-        elif "probability" in key_lower:
-            # Never leave a probability blank — fall back to a real number.
-            # Mirrors the neutral/skewed defaults _downgrade_to_wait already
-            # uses elsewhere, so this stays consistent across the codebase.
-            if "buy" in key_lower:
-                result[key] = 60 if decision == "buy" else (40 if decision == "sell" else 50)
-            elif "sell" in key_lower:
-                result[key] = 60 if decision == "sell" else (40 if decision == "buy" else 50)
+            key_lower = key.lower()
+
+            if key_lower in _FIELD_FALLBACKS:
+                node[key] = _FIELD_FALLBACKS[key_lower]
+
+            elif "probability" in key_lower:
+                if "buy" in key_lower:
+                    node[key] = 60 if decision == "buy" else (40 if decision == "sell" else 50)
+                elif "sell" in key_lower:
+                    node[key] = 60 if decision == "sell" else (40 if decision == "buy" else 50)
+                else:
+                    node[key] = 50
+
+            elif key_lower in ("buy_trigger", "sell_trigger"):
+                side = "buy" if key_lower == "buy_trigger" else "sell"
+                node[key] = (
+                    f"No clear {side} case on this chart right now — "
+                    f"the setup isn't there yet, not a data error."
+                )
+
+            elif key_lower == "reasoning":
+                node[key] = (
+                    "The chart didn't provide enough clearly identifiable "
+                    "structure for a confident directional read at this time."
+                )
+
             else:
-                result[key] = 50
+                node[key] = "Not available for this chart"
+        return node
 
-        elif key_lower in ("buy_trigger", "sell_trigger"):
-            side = "buy" if key_lower == "buy_trigger" else "sell"
-            result[key] = (
-                f"No clear {side} case on this chart right now — "
-                f"the setup isn't there yet, not a data error."
-            )
+    if isinstance(node, list):
+        return [_no_na_walk(item, decision) for item in node]
 
-        elif key_lower == "reasoning":
-            result[key] = (
-                "The chart didn't provide enough clearly identifiable "
-                "structure for a confident directional read at this time."
-            )
-
-        else:
-            # Any other stray N/A field: still never show the raw code.
-            result[key] = "Not available for this chart"
-
-    return result
+    return node
 
 
 # ---------------------------------------------------------------------------
