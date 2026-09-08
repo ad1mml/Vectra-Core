@@ -1,43 +1,44 @@
-PRO_DECISION = r"""
-PRO DECISION ENGINE — ONE FINAL AUTHORITY
-=========================================
+"""
+pro_decision.py
+==============================================================================
+VectraCore — Pro Tier — Decision Logic Module
+"""
 
-Build exactly one final decision from the evidence produced by the modules.
+PRO_DECISION = """
+------------------------------------------------------------------------------
+PRO DECISION LOGIC
+------------------------------------------------------------------------------
 
-STEP 1 — SUMMARIZE THE MARKET
------------------------------
-State internally the active regime, controlling structure and key location.
+Apply decision_spine.py Section 4 (universal decision rules) first. This
+module adds the Pro-specific bar for calling a direction.
 
-STEP 2 — BUILD TWO THESIS LEDGERS
-----------------------------------
-For BUY and SELL separately, identify only meaningful evidence and its quality.
-Do not count buzzwords.
+CALL BUY OR SELL ONLY WHEN, TOGETHER:
+1. Structure (pro_structure.py), liquidity/order-flow (pro_liquidity.py,
+   pro_orderflow.py), and technical zones (pro_technical.py) meaningfully
+   align per the synthesis process in pro_reasoning.py.
+2. A real current_price anchor was read directly off this chart.
+3. Entry satisfies the Price-Grounding Protocol and pro_TPSL.py's
+   construction rules.
+4. A specific, structurally-justified stop_loss exists (pro_risk.py).
+5. A genuine structural take_profit exists (pro_TPSL.py) — not one
+   stretched to hit a ratio.
 
-STEP 3 — FIND THE DIRECTIONAL LEADER
-------------------------------------
-Choose the side with the stronger causal explanation and structural control.
-A side does not need unanimous confluence. A materially stronger thesis wins.
+If any of these five is missing or weak, prefer Wait over a lower-quality
+directional call — Pro's bar for calling a direction is higher than
+Default's precisely because Pro's deeper toolset makes it easier to talk
+yourself into a marginal setup sounding sophisticated. Sophistication in
+the writeup is not a substitute for genuine confluence in the evidence.
 
-STEP 4 — EXECUTION TEST
------------------------
-For the leader, construct honest Entry, SL and TP from the chart.
+DIRECTIONAL PROBABILITY FIELDS (buy_probability / sell_probability):
+Calibrate to the actual strength of confluence from pro_reasoning.py's
+synthesis, not to how decisive the decision field sounds. A Wait result
+can and often should still carry informative, moderately-split probability
+figures (e.g., 55/45) reflecting a genuine lean that simply didn't clear
+the bar for action yet — this is more useful to the user than a flat 50/50
+on every Wait.
 
-STEP 5 — RR TEST
-----------------
-Calculate RR exactly. RR < 1.00 -> WAIT.
-RR >= 1.00 -> eligible.
-
-STEP 6 — WAIT TEST
-------------------
-WAIT only for a real hard blocker under the master contract.
-Do not use uncertainty, missing optional evidence, or desire for more
-confirmation as a blocker.
-
-STEP 7 — CONSISTENCY TEST
--------------------------
-Direction, probabilities, Entry, SL, TP, RR, and textual rationale must agree.
-
-FINAL RULE
-----------
-Return BUY, SELL or WAIT exactly once. Never output competing final decisions.
+WHEN THE EVIDENCE IS GENUINELY MIXED:
+Say so plainly in reasoning, keep probability figures close to even, and
+call Wait. A mixed picture is not a reason to force a pick — it's the
+correct trigger for Wait.
 """

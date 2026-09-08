@@ -283,9 +283,9 @@
     </header>
 
     <main>
-        <div class="badge">FREE PUBLIC BETA — ALL PLANS FREE</div>
+        <div class="badge">VECTRACORE PLANS</div>
         <h2 class="page-title">Choose your plan</h2>
-        <p class="lede">Every tier is free while VectraCore is in beta. Pick the plan that matches how you'll use it — pricing and plan-specific AI agents are coming later.</p>
+        <p class="lede">Choose the VectraCore intelligence level that fits the way you trade.</p>
 
         <div class="plans">
             <!-- Default — brushed steel -->
@@ -296,8 +296,8 @@
                 </div>
                 <div class="card-divider"></div>
                 <p class="plan-desc">For traders getting started with structural chart analysis.</p>
-                <div class="plan-price"><span class="amount">Free</span></div>
-                <p class="plan-note">Free forever — no card required</p>
+                <div class="plan-price"><span class="amount">$0</span><span class="period">/ month</span></div>
+                <p class="plan-note">No subscription required</p>
                 <ul class="plan-features">
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 20 chart analyses every month</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Unlimited text chat</li>
@@ -316,15 +316,15 @@
                 </div>
                 <div class="card-divider"></div>
                 <p class="plan-desc">For active traders who want faster, deeper reads on every setup.</p>
-                <div class="plan-price"><span class="amount">Free</span></div>
-                <p class="plan-note">Free during beta — paid tier coming later</p>
+                <div class="plan-price"><span class="amount">$19.99</span><span class="period">/ month</span></div>
+                <p class="plan-note">First 2 months · then $99/month</p>
                 <ul class="plan-features">
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 150 chart analyses every month</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Unlimited text chat</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Can answer fundamental & geopolitical questions</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Chart analysis remains technical-only</li>
                 </ul>
-                <a href="index.html?plan=pro" class="plan-btn trigger-plan" data-plan="pro">Get Started</a>
+                <a href="billing.html?plan=pro" class="plan-btn trigger-plan" data-plan="pro">Get Started</a>
             </div>
 
             <!-- VIP — gold + amethyst -->
@@ -335,8 +335,8 @@
                 </div>
                 <div class="card-divider"></div>
                 <p class="plan-desc">For serious traders who want the full VectraCore experience, first.</p>
-                <div class="plan-price"><span class="amount">Free</span></div>
-                <p class="plan-note">Free during beta — paid tier coming later</p>
+                <div class="plan-price"><span class="amount">$49.99</span><span class="period">/ month</span></div>
+                <p class="plan-note">First 2 months · then $219.99/month</p>
                 <ul class="plan-features">
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Unlimited everything</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Combines technical and fundamental analysis</li>
@@ -345,27 +345,13 @@
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Chart comparison over time</li>
                     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Deeper market structure understanding</li>
                 </ul>
-                <a href="index.html?plan=vip" class="plan-btn trigger-plan" data-plan="vip">Get Started</a>
+                <a href="billing.html?plan=vip" class="plan-btn trigger-plan" data-plan="vip">Get Started</a>
             </div>
         </div>
 
-        <div class="coming-soon-note">
-            All plans include full access during the free public beta. Each tier now runs its own AI agent tuned to that plan's scope — Default stays technical-only (20 chart analyses / month, unlimited chat), Pro adds fundamentals & geopolitics to chat but keeps chart analysis technical-only (150 chart analyses / month, unlimited chat), and VIP combines both with no limits. Pricing will be introduced with plenty of notice — nothing changes for existing users without a heads-up.
-        </div>
+
     </main>
 
     <footer>&copy; 2026 VectraCore Research.</footer>
-<script>
-    document.querySelectorAll(".trigger-plan").forEach(button => {
-        button.addEventListener("click", function() {
-            const plan = this.dataset.plan;
-
-            localStorage.setItem(
-                "vectracore_plan",
-                plan
-            );
-        });
-    });
-</script>
 </body>
 </html>

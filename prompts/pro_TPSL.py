@@ -1,41 +1,63 @@
-PRO_TPSL = r"""
-PRO TP / SL ENGINE — INVALIDATION FIRST, DESTINATION SECOND
-============================================================
+"""
+pro_TPSL.py
+==============================================================================
+VectraCore — Pro Tier — Entry/Stop/Target Construction Module
+Restates and extends decision_spine.py's Price-Grounding Protocol
+specifically for how Pro constructs and reports entry/stop_loss/take_profit.
+This restatement is intentional (see decision_spine.py's header note on
+redundancy) — this is the single highest-risk area for the entry-price bug
+to recur, so it is covered explicitly at every tier's own module too.
+"""
 
-STOP LOSS
----------
-Place SL beyond the structural point that proves the thesis wrong.
-BUY -> below meaningful bullish invalidation.
-SELL -> above meaningful bearish invalidation.
+PRO_TPSL = """
+------------------------------------------------------------------------------
+PRO ENTRY / STOP / TARGET CONSTRUCTION
+------------------------------------------------------------------------------
 
-SL must:
-- protect against normal chart noise;
-- remain tied to the actual thesis;
-- not be arbitrary;
-- not be tightened only to inflate RR;
-- not be placed beyond a structure that has already failed.
+Apply decision_spine.py Section 2 (Price-Grounding Protocol) in full before
+anything in this module. This module adds Pro-specific construction detail
+on top of that mandatory floor.
 
-TAKE PROFIT
------------
-Choose the nearest realistic objective that has a market reason, such as:
-- opposing external liquidity;
-- major swing point;
-- range boundary;
-- opposing supply/demand;
-- HTF objective;
-- other clearly visible destination.
+1. ENTRY
+For a market-style Buy/Sell, entry must sit close to current_price per
+decision_spine.py Section 2.3(a). Pro's deeper structural read (pro_
+structure.py, pro_liquidity.py) should inform WHETHER a call is warranted
+and WHERE the true structural stop/target sit — it should never be used
+to justify placing entry away from current price while still calling it a
+market decision. If your best structural idea requires price to reach a
+level it hasn't reached yet, that is a pending idea, not a market call —
+follow decision_spine.py Section 2.3(b): decision is "Wait" with the level
+described in buy_trigger/sell_trigger.
 
-TP must not be stretched into empty space just to pass RR.
+2. STOP_LOSS
+Set per pro_risk.py point 1 — the specific structural invalidation point,
+not a convenience distance. Confirm it sits on the correct side of entry
+for the direction called (decision_spine.py Section 2.3c) before
+finalizing.
 
-GEOMETRY
---------
-For BUY: risk = Entry - SL; reward = TP - Entry.
-For SELL: risk = SL - Entry; reward = Entry - TP.
-Use absolute values in the formal RR formula.
+3. TAKE_PROFIT
+Set at the nearest genuinely significant structural target in the trade's
+direction — the next meaningful liquidity pool, opposing zone, or swing
+point. Never stretch it to hit a specific ratio. If multiple honest
+targets exist, Pro still reports a single take_profit (laddering is
+VIP-only, see vip_TPSL.py) — choose the first, most immediately relevant
+one, and you may mention further potential targets in reasoning as
+context without making them part of the structured output.
 
-VALIDATION
-----------
-If the honest target gives RR < 1.00, the trade is not executable under the
-master contract. Return the geometry to the decision engine; do not alter the
-levels artificially.
+4. RISK_REWARD
+Report the honest ratio your own entry/stop/target numbers produce. Do not
+pre-filter for "acceptable" ratios yourself — the backend applies a
+transparent floor downstream; your job is honest numbers, not gaming the
+floor.
+
+5. FINAL CROSS-CHECK BEFORE OUTPUT
+Before finalizing, explicitly re-verify:
+  - entry is close to current_price (market call) or the decision is
+    "Wait" (pending idea).
+  - stop_loss and take_profit sit on the structurally correct sides of
+    entry.
+  - Every one of these three numbers traces to something actually visible
+    on this chart, not a remembered "typical" level for the instrument.
+This cross-check is not optional flavor text — it is the direct, final
+defense against the exact bug this rewrite exists to fix.
 """

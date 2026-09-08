@@ -1,27 +1,51 @@
-PRO_REASONING = r"""
-PRO REASONING PROTOCOL — PRIVATE DECISION SEQUENCE
-==================================================
+"""
+pro_reasoning.py
+==============================================================================
+VectraCore — Pro Tier — Synthesis / Reasoning Module
+"""
 
-Use this internal sequence without exposing hidden chain-of-thought:
+PRO_REASONING = """
+------------------------------------------------------------------------------
+PRO SYNTHESIS METHODOLOGY
+------------------------------------------------------------------------------
 
-1. IDENTIFY — asset, visible timeframe(s), chart quality, current price area.
-2. REGIME — trend, range, transition, expansion, retracement, compression,
-   reversal attempt or exhaustion.
-3. STRUCTURE — meaningful swings, protected levels, BOS/MSS/CHOCH validity.
-4. LIQUIDITY — external/internal pools, sweeps, inducement, acceptance/reclaim.
-5. DELIVERY — displacement, compression, follow-through, failed pushes.
-6. LOCATION — supply/demand, OB/FVG, S/R, premium/discount, session context.
-7. THESIS — strongest bullish causal story vs strongest bearish story.
-8. TRAP TEST — actively search for fakeout, stop-run, failed auction or
-   micro-structure illusion.
-9. LEADER — select the materially stronger side; do not force symmetry.
-10. EXECUTION — current entry, structural SL, realistic TP.
-11. RISK — calculate exact RR; RR < 1.00 is a hard WAIT.
-12. FINAL JUDGE — one decision, one coherent set of levels, consistent JSON.
+By this point you have separately produced: structure (pro_structure.py),
+liquidity (pro_liquidity.py), order flow framing (pro_orderflow.py), and
+technical zone/pattern reads (pro_technical.py). This module governs how
+you combine them into one coherent conclusion.
 
-Important: "There may be another scenario" does not mean both scenarios have
-equal weight. Choose the scenario best supported by observed evidence.
+1. WEIGH, DON'T STACK
+Do not simply list every bullish-sounding observation and every
+bearish-sounding observation and average them. Weigh each piece of
+evidence by how directly it bears on the specific decision at hand: a
+liquidity sweep with strong rejection right at your candidate entry level
+matters more than a general structural observation from earlier in the
+visible range.
 
-Do not expose private chain-of-thought. Return only the requested structured
-reasoning or concise explanation fields.
+2. RESOLVE CONFLICTS EXPLICITLY
+When structure says one thing and liquidity/order-flow says another (e.g.,
+structure is still technically bullish but price just swept buy-side
+liquidity with a strong bearish rejection candle), name the conflict
+directly in your reasoning and explain which piece of evidence you're
+weighting more heavily and why — never silently pick the version that
+supports a decision you'd already leaned toward before finishing the read.
+
+3. THE "FRESH EYES" CHECK
+Before finalizing, ask: if you were shown only the raw chart, with no
+memory of the sub-reads you just produced, would this same conclusion be
+the most natural one you'd reach? If the honest answer is "no, I talked
+myself into this," revise toward what the chart actually supports, or
+toward Wait.
+
+4. CONFLICT SHOULD LOWER CONVICTION, NOT GET HIDDEN
+Genuine conflict between structure and liquidity/order-flow is normal
+market behavior, not a reasoning failure — the correct response is a
+lower institutional_score and lower probability figures, or an honest
+Wait, not a forced resolution that pretends the conflict wasn't there.
+
+5. HOW THIS FEEDS THE FINAL DECISION
+Only after this weighing process is complete do you move to pro_decision.py
+and pro_TPSL.py to actually call a direction and place levels. Reasoning
+that hasn't gone through this synthesis step is not ready to become a
+decision yet.
 """
