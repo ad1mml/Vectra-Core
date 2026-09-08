@@ -1306,11 +1306,25 @@ def _no_na_result(result):
     Recursive: walks nested dicts/lists too, since the exact JSON schema
     (pro_json.py) is described in prose, not as a literal field map, so
     N/A could in principle show up inside a nested object instead of only
-    at the top level."""
+    at the top level.
+
+    Also BACKFILLS a fixed set of descriptive fields if the model omits
+    the key entirely (as opposed to including it with an N/A value) — a
+    frontend that does something like `value || "N/A"` will otherwise show
+    a raw N/A for a key that was simply never in the JSON, which the
+    key-present-only cleanup above can't catch."""
     decision = ""
     if isinstance(result, dict):
         decision = str(result.get("decision", "")).strip().lower()
-    return _no_na_walk(result, decision)
+
+    result = _no_na_walk(result, decision)
+
+    if isinstance(result, dict):
+        for key, fallback in _FIELD_FALLBACKS.items():
+            if key not in result or _is_na(result.get(key)):
+                result[key] = fallback
+
+    return result
 
 
 def _no_na_walk(node, decision):
