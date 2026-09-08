@@ -172,6 +172,26 @@ BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
 FROM_EMAIL = os.environ.get("FROM_EMAIL")
 FROM_NAME = os.environ.get("FROM_NAME", "VectraCore")
 
+# PayPal Subscriptions. The client secret is server-only and must be supplied
+# through PAYPAL_CLIENT_SECRET; never expose it to the browser.
+PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "live").strip().lower()
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "BAAEDgwSRSVZDt5GBhEcllofllMjOtMXB5OvC1Thbs5XcvPvhmTmLNM5IhOyiNuYBXC-p6Jx7NZ44lHre4").strip()
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
+PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "4T279550S2778225T").strip()
+PAYPAL_PLAN_IDS = {
+    "pro_monthly": "P-7YV3918212525042CNKQDDVY",
+    "pro_annual": "P-43S58133986604546NKQDEMQ",
+    "vip_monthly": "P-2JC37890BJ846924HNKQDA6I",
+    "vip_annual": "P-9RN27174KB9963427NKQDCDI",
+}
+PAYPAL_PLAN_TO_TIER = {
+    PAYPAL_PLAN_IDS["pro_monthly"]: "pro",
+    PAYPAL_PLAN_IDS["pro_annual"]: "pro",
+    PAYPAL_PLAN_IDS["vip_monthly"]: "vip",
+    PAYPAL_PLAN_IDS["vip_annual"]: "vip",
+}
+PAYPAL_API_BASE = "https://api-m.paypal.com" if PAYPAL_MODE == "live" else "https://api-m.sandbox.paypal.com"
+
 VERIFICATION_CODE_TTL_SECONDS = 600       # code valid for 10 minutes
 VERIFICATION_MAX_ATTEMPTS = 5              # wrong guesses allowed before the code is killed
 VERIFICATION_RESEND_COOLDOWN_SECONDS = 45  # throttle "resend code" spam
@@ -585,6 +605,128 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
             users[email]["agreed_policies_at"] = now_str
     _save_json(USERS_FILE, users)
     return users[email]
+
+
+# ---------------------------------------------------------------------------
+# PayPal subscription helpers
+# ---------------------------------------------------------------------------
+def _paypal_access_token():
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        raise RuntimeError("PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.")
+    r = requests.post(
+        f"{PAYPAL_API_BASE}/v1/oauth2/token",
+        auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
+        headers={"Accept": "application/json", "Accept-Language": "en_US"},
+        data={"grant_type": "client_credentials"}, timeout=15,
+    )
+    if r.status_code >= 300:
+        app.logger.error("PayPal OAuth failed: %s %s", r.status_code, r.text[:500])
+        raise RuntimeError("PayPal authentication failed.")
+    token = r.json().get("access_token")
+    if not token:
+        raise RuntimeError("PayPal did not return an access token.")
+    return token
+
+
+def _paypal_request(method, path, json_body=None):
+    token = _paypal_access_token()
+    return requests.request(
+        method, f"{PAYPAL_API_BASE}{path}",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"},
+        json=json_body, timeout=20,
+    )
+
+
+def _paypal_plan_key(plan):
+    value = (plan or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return {
+        "pro": "pro_monthly", "monthly_pro": "pro_monthly", "annual_pro": "pro_annual",
+        "vip": "vip_monthly", "monthly_vip": "vip_monthly", "annual_vip": "vip_annual",
+    }.get(value, value)
+
+
+def _effective_plan_for_email(email, requested_plan="default"):
+    # Browser-supplied plan values are never trusted for paid access.
+    email = (email or "").strip().lower()
+    users = _load_json(USERS_FILE, {})
+    account = users.get(email, {})
+    if account.get("subscription_status") == "ACTIVE" and account.get("plan") in ("pro", "vip"):
+        return account["plan"]
+    return "default"
+
+
+def _set_subscription_state(email, status, subscription_id=None, plan_id=None, event_type=None):
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    users = _load_json(USERS_FILE, {})
+    account = users.get(email, {"plan": "default", "verified": True})
+    status = (status or "").upper()
+    tier = PAYPAL_PLAN_TO_TIER.get(plan_id)
+    account["subscription_status"] = status
+    if subscription_id:
+        account["paypal_subscription_id"] = subscription_id
+    if plan_id:
+        account["paypal_plan_id"] = plan_id
+    if event_type:
+        account["last_paypal_event"] = event_type
+    account["subscription_updated_at"] = datetime.utcnow().isoformat()
+    if status == "ACTIVE" and tier:
+        account["plan"] = tier
+    elif status in {"CANCELLED", "EXPIRED", "SUSPENDED", "REVOKED"}:
+        account["plan"] = "default"
+    users[email] = account
+    _save_json(USERS_FILE, users)
+    return account
+
+
+def _verify_paypal_webhook(headers, event):
+    required = {
+        "transmission_id": headers.get("PAYPAL-TRANSMISSION-ID"),
+        "transmission_time": headers.get("PAYPAL-TRANSMISSION-TIME"),
+        "cert_url": headers.get("PAYPAL-CERT-URL"),
+        "auth_algo": headers.get("PAYPAL-AUTH-ALGO"),
+        "transmission_sig": headers.get("PAYPAL-TRANSMISSION-SIG"),
+    }
+    if not PAYPAL_WEBHOOK_ID or not all(required.values()):
+        return False
+    r = _paypal_request("POST", "/v1/notifications/verify-webhook-signature", {
+        **required, "webhook_id": PAYPAL_WEBHOOK_ID, "webhook_event": event,
+    })
+    return r.status_code < 300 and r.json().get("verification_status") == "SUCCESS"
+
+
+def _handle_paypal_webhook(event):
+    event_type = (event.get("event_type") or "").upper()
+    resource = event.get("resource") or {}
+    if event_type.startswith("PAYMENT."):
+        return {"handled": True, "access_changed": False}
+
+    sub_id = resource.get("id")
+    plan_id = resource.get("plan_id")
+    status = (resource.get("status") or "").upper()
+    email = ((resource.get("subscriber") or {}).get("email_address") or "").strip().lower()
+    if not email and sub_id:
+        users = _load_json(USERS_FILE, {})
+        for candidate, account in users.items():
+            if account.get("paypal_subscription_id") == sub_id:
+                email = candidate
+                break
+
+    active = {"BILLING.SUBSCRIPTION.ACTIVATED", "BILLING.SUBSCRIPTION.RE-ACTIVATED", "BILLING.SUBSCRIPTION.UPDATED"}
+    inactive = {"BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED", "BILLING.SUBSCRIPTION.SUSPENDED", "BILLING.SUBSCRIPTION.REVOKED"}
+    if event_type in active:
+        tier = PAYPAL_PLAN_TO_TIER.get(plan_id)
+        if not tier:
+            return {"handled": False, "access_changed": False}
+        if email:
+            _set_subscription_state(email, "ACTIVE", sub_id, plan_id, event_type)
+        return {"handled": True, "access_changed": bool(email)}
+    if event_type in inactive:
+        if email:
+            _set_subscription_state(email, status or event_type.rsplit(".", 1)[-1], sub_id, plan_id, event_type)
+        return {"handled": True, "access_changed": bool(email)}
+    return {"handled": True, "access_changed": False}
 
 
 # ---------------------------------------------------------------------------
@@ -1376,6 +1518,90 @@ def _no_na_walk(node, decision):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@app.route("/paypal/config", methods=["GET"])
+def paypal_config():
+    return jsonify({
+        "mode": PAYPAL_MODE,
+        "client_id": PAYPAL_CLIENT_ID,
+        "plans": PAYPAL_PLAN_IDS,
+    }), 200
+
+
+@app.route("/paypal/create-subscription", methods=["POST"])
+@app.route("/create-subscription", methods=["POST"])
+def create_paypal_subscription():
+    if not PAYPAL_CLIENT_SECRET:
+        return jsonify({"error": "PayPal payments are not configured on the server."}), 503
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or data.get("user_email") or "").strip().lower()
+    requested_plan = data.get("plan") or data.get("plan_key") or ""
+    if not email or not _valid_email(email):
+        return jsonify({"error": "A valid email is required."}), 400
+    plan_key = _paypal_plan_key(requested_plan)
+    plan_id = PAYPAL_PLAN_IDS.get(plan_key)
+    if not plan_id:
+        return jsonify({"error": "Invalid plan.", "available_plans": list(PAYPAL_PLAN_IDS)}), 400
+
+    users = _load_json(USERS_FILE, {})
+    account = users.get(email)
+    if not account or not account.get("verified"):
+        return jsonify({"error": "Verify your email and create your VectraCore account before subscribing."}), 403
+    if account.get("subscription_status") == "ACTIVE" and account.get("paypal_subscription_id"):
+        return jsonify({"error": "This account already has an active subscription.", "plan": account.get("plan", "default")}), 409
+
+    base_url = request.url_root.rstrip("/")
+    body = {
+        "plan_id": plan_id,
+        "subscriber": {"email_address": email},
+        "custom_id": email,
+        "application_context": {
+            "brand_name": "VectraCore", "locale": "en-US", "shipping_preference": "NO_SHIPPING",
+            "user_action": "SUBSCRIBE_NOW", "return_url": f"{base_url}/payment-success",
+            "cancel_url": f"{base_url}/pricing.html",
+        },
+    }
+    try:
+        r = _paypal_request("POST", "/v1/billing/subscriptions", body)
+        payload = r.json() if r.content else {}
+    except Exception as exc:
+        app.logger.exception("PayPal subscription creation failed")
+        return jsonify({"error": "Could not connect to PayPal.", "details": str(exc)[:200]}), 502
+    if r.status_code >= 300:
+        app.logger.error("PayPal create subscription failed: %s %s", r.status_code, r.text[:1000])
+        return jsonify({"error": "PayPal could not create the subscription.", "paypal": payload}), 502
+
+    subscription_id = payload.get("id")
+    approval_url = next((x.get("href") for x in payload.get("links", []) if x.get("rel") in ("approve", "payer-action")), None)
+    account["paypal_subscription_id"] = subscription_id
+    account["paypal_plan_id"] = plan_id
+    account["subscription_status"] = "APPROVAL_PENDING"
+    account["subscription_updated_at"] = datetime.utcnow().isoformat()
+    users[email] = account
+    _save_json(USERS_FILE, users)
+    return jsonify({
+        "success": True, "subscription_id": subscription_id, "plan": PAYPAL_PLAN_TO_TIER[plan_id],
+        "plan_key": plan_key, "plan_id": plan_id, "approval_url": approval_url, "status": payload.get("status"),
+    }), 200
+
+
+@app.route("/paypal/webhook", methods=["POST"])
+@app.route("/webhooks/paypal", methods=["POST"])
+def paypal_webhook():
+    if not PAYPAL_CLIENT_SECRET or not PAYPAL_WEBHOOK_ID:
+        return jsonify({"error": "PayPal webhook verification is not configured."}), 503
+    event = request.get_json(silent=True)
+    if not isinstance(event, dict):
+        return jsonify({"error": "Invalid webhook payload."}), 400
+    try:
+        if not _verify_paypal_webhook(request.headers, event):
+            return jsonify({"error": "Invalid PayPal webhook signature."}), 400
+        return jsonify({"status": "ok", **_handle_paypal_webhook(event)}), 200
+    except Exception:
+        app.logger.exception("PayPal webhook processing failed")
+        return jsonify({"error": "Webhook processing failed."}), 500
+
+
 @app.route("/register", methods=["POST"])
 def register():
     data = request.get_json(silent=True) or {}
@@ -1392,19 +1618,15 @@ def register():
         history[email] = []
         _save_json(HISTORY_FILE, history)
 
-    # All plans are free during the beta — this just records which tier the
-    # user picked so a per-plan AI agent can be routed to later.
+    # Registration establishes the account identity. Paid access is granted
+    # only after a verified PayPal subscription webhook.
     users = _load_json(USERS_FILE, {})
     if email not in users:
-        users[email] = {
-            "plan": plan,
-            "registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
+        users[email] = {"plan": "default", "registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "verified": True}
     else:
-        users[email]["plan"] = plan
+        users[email]["verified"] = True
     _save_json(USERS_FILE, users)
-
-    return jsonify({"status": "success", "email": email, "plan": users[email]["plan"]}), 200
+    return jsonify({"status": "success", "email": email, "plan": _effective_plan_for_email(email, plan)}), 200
 
 
 @app.route("/send-verification-code", methods=["POST"])
@@ -1537,7 +1759,8 @@ def get_account():
         return jsonify({"error": "Email required"}), 400
 
     users = _load_json(USERS_FILE, {})
-    account = users.get(email, {"plan": "default", "registered_at": None})
+    account = dict(users.get(email, {"plan": "default", "registered_at": None}))
+    account["plan"] = _effective_plan_for_email(email, account.get("plan", "default"))
     return jsonify({"email": email, **account}), 200
 
 
@@ -1918,10 +2141,13 @@ def analyze_chart():
             "guest"
         ).lower().strip()
 
-        plan = request.form.get(
+        requested_plan = request.form.get(
             "plan",
             "default"
         ).lower().strip()
+
+        # Never trust a paid plan sent by the browser; PayPal state is authoritative.
+        plan = _effective_plan_for_email(user_email, requested_plan)
 
         chart = request.files.get("chart")
 
