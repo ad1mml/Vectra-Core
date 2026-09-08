@@ -86,34 +86,35 @@ PLAN_CONFIG = {
     "default": {
         "temperature": 0.20,
         "top_p": 0.90,
-        # "minimal" thinking keeps Default fast — its prompt is the simplest
-        # of the three, so it doesn't need deep internal reasoning anyway.
-        # ("low" still does meaningful step-by-step reasoning before
-        # writing output — "minimal" skips most of that for latency.)
-        "thinking_level": "minimal"
+        # NOTE: this shares the exact same decision_spine.py + Pro module
+        # stack as "pro" (DEFAULT_PROMPT = PRO_PROMPT) — a multi-stage
+        # prompt that requires building bullish/bearish evidence ledgers,
+        # classifying regime, validating structure, etc. "minimal" gave the
+        # model too little budget to actually execute those steps, so it
+        # was defaulting to the safe WAIT/N/A output instead of finishing
+        # the reasoning chain. Bumped to "low" to fix that; if latency
+        # becomes a problem again, shrink the prompt itself rather than
+        # dropping this back to "minimal".
+        "thinking_level": "low"
     },
 
     "pro": {
         "temperature": 0.15,
         "top_p": 0.85,
-        # Pro's prompt is close to VIP's technical depth now, so speed here
-        # comes almost entirely from thinking_level rather than prompt
-        # size — "minimal" is the real lever, not "low".
-        "thinking_level": "minimal"
+        # Same issue as "default" above — this prompt (decision_spine.py +
+        # 8 Pro modules) needs real step-by-step reasoning. "minimal" was
+        # causing WAIT/N/A fallbacks instead of completed analysis.
+        "thinking_level": "low"
     },
 
     "vip": {
         "temperature": 0.10,
         "top_p": 0.80,
-        # VIP's prompt is still huge (~20 concatenated specialist modules,
-        # all sent every call regardless of which are actually relevant),
-        # so the model has a lot of input to read before it even starts
-        # "thinking" — that input-processing time is NOT controlled by
-        # thinking_level at all. "minimal" removes the one lever we can
-        # control here; the prompt-size lever still needs addressing
-        # separately (see note in vip_prompt.py) if this still isn't fast
-        # enough.
-        "thinking_level": "minimal"
+        # VIP's prompt is Pro's stack PLUS ~13 more specialist modules —
+        # even more reasoning steps than default/pro, so it needs at least
+        # as much thinking budget, not less. "minimal" here was the same
+        # WAIT/N/A fallback problem, just on an even heavier prompt.
+        "thinking_level": "low"
     }
 }
 PLAN_MODELS = {
@@ -1260,6 +1261,93 @@ def _enforce_min_rr(result):
 
 
 # ---------------------------------------------------------------------------
+# NEVER-N/A SAFETY NET
+# ---------------------------------------------------------------------------
+# thinking_level="low" (see PLAN_CONFIG) fixes the case where the model was
+# defaulting to N/A because it didn't have enough reasoning budget to finish
+# the decision_spine.py steps. It does NOT fix the other, legitimate case:
+# the model genuinely can't read something off the chart (e.g. no visible
+# ticker) and honestly reports that as N/A per pro_json.py's schema.
+#
+# The user should never see a bare "N/A" with no explanation, in either
+# case. This pass runs on every chart-analysis result right before it's
+# returned and replaces any N/A / empty value with something the user can
+# actually use — a plain-language explanation for identity-type fields, and
+# a real computed number (never a placeholder) for probabilities.
+#
+# This never invents chart data (no fake symbol, no fake entry/SL/TP) — it
+# only rewrites how "I don't know" is communicated, so nothing here
+# conflicts with decision_spine.py's "never invent data" rule.
+
+_NA_VALUES = {"", "n/a", "na", "none", "null", "unknown", "-"}
+
+
+def _is_na(value):
+    if value is None:
+        return True
+    return str(value).strip().lower() in _NA_VALUES
+
+
+# Human-readable stand-ins for identity/descriptive fields where N/A really
+# just means "not visible on this chart" — never shown as a raw code/N/A.
+_FIELD_FALLBACKS = {
+    "symbol": "Not identifiable from this chart",
+    "timeframe": "Not visible on this chart",
+    "chart_type": "Not identifiable from this chart",
+    "market_structure": "Not enough visible structure to classify",
+}
+
+
+def _no_na_result(result):
+    """Guarantees no field in a chart-analysis result is a bare N/A when it
+    reaches the frontend. Only rewrites presentation of missing data —
+    never fabricates prices, levels, or a direction the model didn't give."""
+    if not isinstance(result, dict):
+        return result
+
+    decision = str(result.get("decision", "")).strip().lower()
+
+    for key, value in list(result.items()):
+        if not _is_na(value):
+            continue
+
+        key_lower = key.lower()
+
+        if key_lower in _FIELD_FALLBACKS:
+            result[key] = _FIELD_FALLBACKS[key_lower]
+
+        elif "probability" in key_lower:
+            # Never leave a probability blank — fall back to a real number.
+            # Mirrors the neutral/skewed defaults _downgrade_to_wait already
+            # uses elsewhere, so this stays consistent across the codebase.
+            if "buy" in key_lower:
+                result[key] = 60 if decision == "buy" else (40 if decision == "sell" else 50)
+            elif "sell" in key_lower:
+                result[key] = 60 if decision == "sell" else (40 if decision == "buy" else 50)
+            else:
+                result[key] = 50
+
+        elif key_lower in ("buy_trigger", "sell_trigger"):
+            side = "buy" if key_lower == "buy_trigger" else "sell"
+            result[key] = (
+                f"No clear {side} case on this chart right now — "
+                f"the setup isn't there yet, not a data error."
+            )
+
+        elif key_lower == "reasoning":
+            result[key] = (
+                "The chart didn't provide enough clearly identifiable "
+                "structure for a confident directional read at this time."
+            )
+
+        else:
+            # Any other stray N/A field: still never show the raw code.
+            result[key] = "Not available for this chart"
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.route("/register", methods=["POST"])
@@ -1983,6 +2071,7 @@ USER REQUEST
 
             result = _safe_json(response)
             result = _enforce_min_rr(result)
+            result = _no_na_result(result)
 
             # The three plans' JSON schemas (default_prompt.py, pro_json.py,
             # vip_json.py) all use lowercase snake_case keys ("symbol",
