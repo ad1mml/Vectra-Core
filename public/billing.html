@@ -61,6 +61,10 @@
         .cycle:hover { border-color:rgba(139,92,246,.7); color:var(--text-main); }
         .payment { border:1px solid var(--border-color); background:rgba(14,21,48,.92); border-radius:14px; padding:30px; position:sticky; top:24px; }
         .payment h2 { font-size:1.35rem; margin-bottom:8px; }
+        .email-label { display:block; color:var(--text-main); font-size:.8rem; font-weight:700; margin-bottom:8px; }
+        .email-input { width:100%; padding:12px 13px; border:1px solid var(--border-color); border-radius:9px; background:rgba(255,255,255,.03); color:var(--text-main); font:400 .9rem 'Inter',sans-serif; margin-bottom:16px; }
+        .email-input:focus { outline:2px solid rgba(139,92,246,.45); outline-offset:1px; border-color:var(--accent-color); }
+        .email-error { display:none; color:#ff8f8f; font-size:.76rem; margin:-8px 0 14px; }
         .payment > p { color:var(--text-muted); font-size:.82rem; line-height:1.5; margin-bottom:22px; }
         .paybox { min-height:90px; }
         .loading { color:var(--text-muted); font-size:.85rem; text-align:center; padding:24px 0; }
@@ -96,6 +100,9 @@
         <aside class="payment">
             <h2>Payment</h2>
             <p id="paymentDescription">Choose your plan and billing cycle, then continue with PayPal.</p>
+            <label class="email-label" for="billingEmail">VectraCore account email</label>
+            <input id="billingEmail" class="email-input" type="email" autocomplete="email" placeholder="you@example.com" required>
+            <div id="emailError" class="email-error">Enter the same verified email you used to create your VectraCore account.</div>
             <div id="paypal-button-container" class="paybox"><div class="loading">Loading secure checkout…</div></div>
             <div class="secure">Payments are processed by PayPal. Your PayPal payment details are handled by PayPal, not stored on this page.</div>
         </aside>
@@ -122,12 +129,27 @@ const params=new URLSearchParams(location.search); let selected=params.get('plan
 const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), trialEl=document.getElementById('trial'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
 function renderDetails(){ const plan=PLANS[selected], p=plan[cycle]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=p.price+' <small>'+p.period+'</small>'; trialEl.textContent=p.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent='Subscribe to '+plan.name+' '+(cycle==='monthly'?'monthly':'annually')+' through PayPal.'; document.querySelectorAll('.cycle').forEach(b=>b.classList.toggle('active',b.dataset.cycle===cycle)); renderPaypal(p.id); }
 let paypalRenderedId=null;
+const emailInput = document.getElementById('billingEmail');
+const emailError = document.getElementById('emailError');
+const storedEmail = localStorage.getItem('vectracore_email') || params.get('email') || '';
+if (storedEmail) emailInput.value = storedEmail;
+
 async function createSubscriptionOnServer(planId){
+  const email = emailInput.value.trim().toLowerCase();
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    emailError.style.display = 'block';
+    emailInput.focus();
+    throw new Error('A valid VectraCore account email is required.');
+  }
+  emailError.style.display = 'none';
+  localStorage.setItem('vectracore_email', email);
+
   const response = await fetch('/paypal/create-subscription', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     credentials: 'same-origin',
     body: JSON.stringify({
+      email: email,
       plan_id: planId,
       plan: selected,
       billing_cycle: cycle
@@ -137,11 +159,12 @@ async function createSubscriptionOnServer(planId){
   let data = {};
   try { data = await response.json(); } catch (_) {}
 
-  if (!response.ok || !data.subscriptionID) {
+  const subscriptionID = data.subscriptionID || data.subscription_id;
+  if (!response.ok || !subscriptionID) {
     throw new Error(data.error || data.message || 'Could not create PayPal subscription.');
   }
 
-  return data.subscriptionID;
+  return subscriptionID;
 }
 
 function renderPaypal(planId){
@@ -166,7 +189,7 @@ function renderPaypal(planId){
     },
 
     onApprove:(data)=>{
-      localStorage.setItem('vectracore_subscription_id',data.subscriptionID);
+      localStorage.setItem('vectracore_subscription_id',data.subscriptionID || data.subscription_id);
       localStorage.setItem('vectracore_plan',selected);
       localStorage.setItem('vectracore_billing_cycle',cycle);
       window.location.href='index.html?subscription=success&plan='+encodeURIComponent(selected);

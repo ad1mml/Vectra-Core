@@ -1580,8 +1580,16 @@ def create_paypal_subscription():
     users[email] = account
     _save_json(USERS_FILE, users)
     return jsonify({
-        "success": True, "subscription_id": subscription_id, "plan": PAYPAL_PLAN_TO_TIER[plan_id],
-        "plan_key": plan_key, "plan_id": plan_id, "approval_url": approval_url, "status": payload.get("status"),
+        "success": True,
+        # Return both spellings for compatibility with PayPal-style frontend
+        # code while keeping the snake_case API field canonical.
+        "subscription_id": subscription_id,
+        "subscriptionID": subscription_id,
+        "plan": PAYPAL_PLAN_TO_TIER[plan_id],
+        "plan_key": plan_key,
+        "plan_id": plan_id,
+        "approval_url": approval_url,
+        "status": payload.get("status"),
     }), 200
 
 
