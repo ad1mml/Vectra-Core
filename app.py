@@ -175,8 +175,8 @@ FROM_NAME = os.environ.get("FROM_NAME", "VectraCore")
 # PayPal Subscriptions. The client secret is server-only and must be supplied
 # through PAYPAL_CLIENT_SECRET; never expose it to the browser.
 PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "live").strip().lower()
-PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "BAAEDgwSRSVZDt5GBhEcllofllMjOtMXB5OvC1Thbs5XcvPvhmTmLNM5IhOyiNuYBXC-p6Jx7NZ44lHre4").strip()
-PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "BAA1zFw6ykhWWJaD6UZqdjSK5DZRc5WDY0NoGDLJkTyOsZg3En4Ba_DgsNgy3MpAUr46YLOVDH0IhQPUro").strip()
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "ELYMr1kNLq3KmQIs-Ppb8482XThyf5CX-vlLWwmq0Xluh-Dk9PYiBJ_tC2NryvLhP_QAB6ms8DhHi13P").strip()
 PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "4T279550S2778225T").strip()
 PAYPAL_PLAN_IDS = {
     "pro_monthly": "P-7YV3918212525042CNKQDDVY",
@@ -1580,16 +1580,8 @@ def create_paypal_subscription():
     users[email] = account
     _save_json(USERS_FILE, users)
     return jsonify({
-        "success": True,
-        # Return both spellings for compatibility with PayPal-style frontend
-        # code while keeping the snake_case API field canonical.
-        "subscription_id": subscription_id,
-        "subscriptionID": subscription_id,
-        "plan": PAYPAL_PLAN_TO_TIER[plan_id],
-        "plan_key": plan_key,
-        "plan_id": plan_id,
-        "approval_url": approval_url,
-        "status": payload.get("status"),
+        "success": True, "subscription_id": subscription_id, "plan": PAYPAL_PLAN_TO_TIER[plan_id],
+        "plan_key": plan_key, "plan_id": plan_id, "approval_url": approval_url, "status": payload.get("status"),
     }), 200
 
 
