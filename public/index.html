@@ -566,7 +566,8 @@
             .modal-content { padding: 28px 22px; }
         }
     </style>
-    <link rel="icon" type="image/jpeg" href="/logo.jpeg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
 
     <!-- PWA: makes VectraCore installable as an app on Android/desktop -->
     <link rel="manifest" href="/manifest.json">
@@ -722,43 +723,91 @@
             : 'http://127.0.0.1:5000';
 
         // --- PWA: install prompt wired to the "Launch App" button ---------
-        // Chrome/Edge/Android fire this instead of auto-showing an install
-        // banner, so we stash it and trigger it ourselves on click. This
-        // listener is attached before the existing trigger-popup-work
-        // listener further down the page, so it always fires first: on
-        // click we (optionally) show the native "Install VectraCore?"
-        // prompt, then the existing login/redirect flow continues exactly
-        // as before, install or not.
+        // Chrome/Edge/Android fire beforeinstallprompt only once specific
+        // criteria are met (valid manifest + service worker + HTTPS), and
+        // sometimes only after the browser has seen some engagement with
+        // the site first — it will NOT fire on every visit/device. So we
+        // never leave the click doing nothing silently: if we don't have a
+        // native prompt ready, we show manual install instructions instead.
         let deferredInstallPrompt = null;
+
+        const isStandaloneAlready =
+            window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true; // iOS Safari flag
 
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredInstallPrompt = e;
+            console.log('[VectraCore PWA] install prompt captured and ready.');
         });
 
         window.addEventListener('appinstalled', () => {
             deferredInstallPrompt = null;
+            console.log('[VectraCore PWA] app installed.');
         });
 
         if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js').catch(() => {
-                    // Non-fatal — the site still works fully without it.
-                });
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(() => console.log('[VectraCore PWA] service worker registered.'))
+                    .catch((err) => console.warn('[VectraCore PWA] service worker failed:', err));
             });
+        }
+
+        function showInstallHelp() {
+            const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+            const isAndroid = /android/i.test(navigator.userAgent);
+
+            let msg;
+            if (isIOS) {
+                msg = 'To install VectraCore: tap the Share icon in Safari, then "Add to Home Screen".';
+            } else if (isAndroid) {
+                msg = 'To install VectraCore: tap the ⋮ menu in Chrome, then "Install app" (or "Add to Home screen").';
+            } else {
+                msg = 'To install VectraCore: open your browser menu and choose "Install VectraCore" or "Add to Home screen".';
+            }
+
+            const existing = document.getElementById('pwa-install-help');
+            if (existing) existing.remove();
+
+            const banner = document.createElement('div');
+            banner.id = 'pwa-install-help';
+            banner.style.cssText = `
+                position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+                max-width: 90vw; width: 380px; background: #0E1530; color: #F5F7FF;
+                border: 1px solid #232C4A; border-radius: 10px; padding: 16px 18px;
+                font-family: 'Inter', sans-serif; font-size: 0.88rem; line-height: 1.5;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.4); z-index: 9999;
+                display: flex; align-items: flex-start; gap: 10px;
+            `;
+            banner.innerHTML = `
+                <span style="flex:1;">${msg}</span>
+                <button aria-label="Dismiss" style="background:none;border:none;color:#8891B3;font-size:1.1rem;cursor:pointer;line-height:1;">&times;</button>
+            `;
+            banner.querySelector('button').addEventListener('click', () => banner.remove());
+            document.body.appendChild(banner);
+            setTimeout(() => banner.remove(), 9000);
         }
 
         const launchAppBtn = document.getElementById('launch-app-btn');
         if (launchAppBtn) {
             launchAppBtn.addEventListener('click', async () => {
+                if (isStandaloneAlready) {
+                    // Already running as an installed app / already installed
+                    // elsewhere on this device — nothing to prompt for.
+                    return;
+                }
+
                 if (deferredInstallPrompt) {
                     const promptToShow = deferredInstallPrompt;
                     deferredInstallPrompt = null;
                     promptToShow.prompt();
-                    // We don't block on the user's choice — whether they
-                    // install or dismiss, "Launch App" still opens VectraCore
-                    // in the browser right away via the existing flow below.
                     promptToShow.userChoice.catch(() => {});
+                } else {
+                    // Native prompt isn't ready (common on first visit, or
+                    // on browsers that don't support it at all, like iOS
+                    // Safari) — show manual steps instead of doing nothing.
+                    showInstallHelp();
                 }
             });
         }
