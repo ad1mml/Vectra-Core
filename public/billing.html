@@ -134,7 +134,7 @@ const emailError = document.getElementById('emailError');
 const storedEmail = localStorage.getItem('vectracore_email') || params.get('email') || '';
 if (storedEmail) emailInput.value = storedEmail;
 
-const API_BASE_URL = 'https://www.vectracore.pythonanywhere.com';
+const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
 
 async function createSubscriptionOnServer(planId){
   const email = emailInput.value.trim().toLowerCase();
@@ -200,7 +200,8 @@ function renderPaypal(planId){
 
     onError:(err)=>{
       console.error('PayPal checkout error:', err);
-      alert('PayPal could not complete the checkout. Please try again.');
+      const message = (err && err.message) ? err.message : 'PayPal could not complete the checkout. Please try again.';
+      alert(message);
     }
   }).render('#paypal-button-container');
 
