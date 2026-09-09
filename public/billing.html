@@ -82,7 +82,7 @@
 <main>
     <div class="eyebrow">Secure checkout</div>
     <h1 class="title">Complete your subscription</h1>
-    <p class="subtitle">Review your plan, choose your billing cycle, then complete payment through PayPal.</p>
+    <p class="subtitle">Review your plan, then complete payment through PayPal.</p>
     <div class="checkout-grid">
         <section class="summary" id="summary">
             <div class="plan-top">
@@ -91,15 +91,11 @@
             </div>
             <div class="trial" id="trial">First 2 months at the introductory price · then $99/month</div>
             <ul class="detail-list" id="details"></ul>
-            <div class="billing-options">
-                <button class="cycle active" data-cycle="monthly">Monthly</button>
-                <button class="cycle" data-cycle="annual">Annual</button>
-            </div>
-            <div class="notice">Subscriptions renew automatically according to the selected billing cycle. VectraCore does not offer refunds; the introductory period is provided so you can evaluate the service before the regular price applies.</div>
+            <div class="notice">Subscriptions renew automatically every month. VectraCore does not offer refunds; the introductory period is provided so you can evaluate the service before the regular price applies.</div>
         </section>
         <aside class="payment">
             <h2>Payment</h2>
-            <p id="paymentDescription">Choose your plan and billing cycle, then continue with PayPal.</p>
+            <p id="paymentDescription">Continue with PayPal to subscribe.</p>
             <label class="email-label" for="billingEmail">VectraCore account email</label>
             <input id="billingEmail" class="email-input" type="email" autocomplete="email" placeholder="you@example.com" required>
             <div id="emailError" class="email-error">Enter the same verified email you used to create your VectraCore account.</div>
@@ -113,21 +109,19 @@
 <script>
 const PLANS = {
   pro: {
-    name:'Pro', type:'Advanced trading intelligence', className:'pro',
-    monthly:{price:'$19.99', period:'/ month', note:'First 2 months at the introductory price · then $99/month', id:'P-7YV3918212525042CNKQDDVY'},
-    annual:{price:'$1,099.99', period:'/ year', note:'Annual subscription · billed once every year', id:'P-43S58133986604546NKQDEMQ'},
-    details:['150 chart analyses every month','Unlimited text chat','Fundamental and geopolitical questions','Technical chart analysis','Advanced trading insights']
+    name:'Pro', type:'Serious analysis, every day', className:'pro',
+    price:'$19.99', period:'/ month', note:'First 2 months at the introductory price · then $99/month', id:'P-0E117512CY516264NNKQWZ6I',
+    details:['150 AI chart analyses per month','Unlimited chat with the trading AI — ask anything, anytime','Full technical breakdowns: structure, trend, key levels','Fundamental and geopolitical context woven into every answer','Save and revisit your analysis history']
   },
   vip: {
-    name:'VIP', type:'Full VectraCore market intelligence', className:'vip',
-    monthly:{price:'$49.99', period:'/ month', note:'First 2 months at the introductory price · then $219.99/month', id:'P-2JC37890BJ846924HNKQDA6I'},
-    annual:{price:'$2,099.99', period:'/ year', note:'Annual subscription · billed once every year', id:'P-9RN27174KB9963427NKQDCDI'},
-    details:['Unlimited chart analysis and usage','Technical + fundamental analysis','Multi-timeframe analysis','Economic calendar integration','Chart comparison over time','Deeper market structure understanding']
+    name:'VIP', type:'Nothing capped, nothing missed', className:'vip',
+    price:'$49.99', period:'/ month', note:'First 2 months at the introductory price · then $219.99/month', id:'P-0NL76272BA6174733NKQWXPY',
+    details:['Unlimited chart analyses — no monthly count to watch','Technical + fundamental analysis combined in one read','Multi-timeframe view on every chart you upload','Live economic calendar folded into the analysis','Track how a chart\'s structure shifts over time','Full analysis history, unlimited']
   }
 };
-const params=new URLSearchParams(location.search); let selected=params.get('plan'); if(!PLANS[selected]) selected='pro'; let cycle='monthly';
+const params=new URLSearchParams(location.search); let selected=params.get('plan'); if(!PLANS[selected]) selected='pro';
 const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), trialEl=document.getElementById('trial'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
-function renderDetails(){ const plan=PLANS[selected], p=plan[cycle]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=p.price+' <small>'+p.period+'</small>'; trialEl.textContent=p.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent='Subscribe to '+plan.name+' '+(cycle==='monthly'?'monthly':'annually')+' through PayPal.'; document.querySelectorAll('.cycle').forEach(b=>b.classList.toggle('active',b.dataset.cycle===cycle)); renderPaypal(p.id); }
+function renderDetails(){ const plan=PLANS[selected]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=plan.price+' <small>'+plan.period+'</small>'; trialEl.textContent=plan.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent='Subscribe to '+plan.name+' monthly through PayPal.'; renderPaypal(plan.id); }
 let paypalRenderedId=null;
 const emailInput = document.getElementById('billingEmail');
 const emailError = document.getElementById('emailError');
@@ -155,7 +149,7 @@ async function createSubscriptionOnServer(planId){
       email: email,
       plan_id: planId,
       plan: selected,
-      billing_cycle: cycle
+      billing_cycle: 'monthly'
     })
   });
 
@@ -194,7 +188,7 @@ function renderPaypal(planId){
     onApprove:(data)=>{
       localStorage.setItem('vectracore_subscription_id',data.subscriptionID || data.subscription_id);
       localStorage.setItem('vectracore_plan',selected);
-      localStorage.setItem('vectracore_billing_cycle',cycle);
+      localStorage.setItem('vectracore_billing_cycle','monthly');
       window.location.href='index.html?subscription=success&plan='+encodeURIComponent(selected);
     },
 
@@ -207,7 +201,6 @@ function renderPaypal(planId){
 
   paypalRenderedId=planId;
 }
-document.querySelectorAll('.cycle').forEach(b=>b.addEventListener('click',()=>{cycle=b.dataset.cycle;renderDetails();}));
 renderDetails();
 </script>
 </body>

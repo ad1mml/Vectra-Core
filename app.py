@@ -183,16 +183,12 @@ PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
 PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
 PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "").strip()
 PAYPAL_PLAN_IDS = {
-    "pro_monthly": "P-7YV3918212525042CNKQDDVY",
-    "pro_annual": "P-43S58133986604546NKQDEMQ",
-    "vip_monthly": "P-2JC37890BJ846924HNKQDA6I",
-    "vip_annual": "P-9RN27174KB9963427NKQDCDI",
+    "pro_monthly": "P-0E117512CY516264NNKQWZ6I",
+    "vip_monthly": "P-0NL76272BA6174733NKQWXPY",
 }
 PAYPAL_PLAN_TO_TIER = {
     PAYPAL_PLAN_IDS["pro_monthly"]: "pro",
-    PAYPAL_PLAN_IDS["pro_annual"]: "pro",
     PAYPAL_PLAN_IDS["vip_monthly"]: "vip",
-    PAYPAL_PLAN_IDS["vip_annual"]: "vip",
 }
 PAYPAL_API_BASE = "https://api-m.paypal.com" if PAYPAL_MODE == "live" else "https://api-m.sandbox.paypal.com"
 
@@ -644,8 +640,8 @@ def _paypal_request(method, path, json_body=None):
 def _paypal_plan_key(plan):
     value = (plan or "").strip().lower().replace("-", "_").replace(" ", "_")
     return {
-        "pro": "pro_monthly", "monthly_pro": "pro_monthly", "annual_pro": "pro_annual",
-        "vip": "vip_monthly", "monthly_vip": "vip_monthly", "annual_vip": "vip_annual",
+        "pro": "pro_monthly", "monthly_pro": "pro_monthly",
+        "vip": "vip_monthly", "monthly_vip": "vip_monthly",
     }.get(value, value)
 
 
