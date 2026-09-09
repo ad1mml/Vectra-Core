@@ -105,8 +105,12 @@
     </div>
 </main>
 <footer>&copy; 2026 VectraCore Research.</footer>
-<script src="https://www.paypal.com/sdk/js?client-id=BAA9jEd9naRHA_FWqvvS1voisO7e4S9Dh65vR5D6gqy0GrtCBqhr01bbapiYc1Rlz1bs6OFflmDsCp2Rhs&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
 <script>
+// PayPal's SDK script is loaded dynamically below, once we know the
+// client-id — it comes from the backend's /paypal/config endpoint, which
+// reads PAYPAL_CLIENT_ID out of .env. Nothing PayPal-specific is ever
+// hardcoded here, so rotating credentials only ever means editing .env on
+// the server and reloading — never touching this file.
 const PLANS = {
   pro: {
     name:'Pro', type:'Serious analysis, every day', className:'pro',
@@ -121,7 +125,7 @@ const PLANS = {
 };
 const params=new URLSearchParams(location.search); let selected=params.get('plan'); if(!PLANS[selected]) selected='pro';
 const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), trialEl=document.getElementById('trial'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
-function renderDetails(){ const plan=PLANS[selected]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=plan.price+' <small>'+plan.period+'</small>'; trialEl.textContent=plan.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent='Subscribe to '+plan.name+' monthly through PayPal.'; renderPaypal(plan.id); }
+function renderDetails(){ const plan=PLANS[selected]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=plan.price+' <small>'+plan.period+'</small>'; trialEl.textContent=plan.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent='Subscribe to '+plan.name+' monthly through PayPal.'; ensurePaypalReady().then(()=>renderPaypal(plan.id)); }
 let paypalRenderedId=null;
 const emailInput = document.getElementById('billingEmail');
 const emailError = document.getElementById('emailError');
@@ -162,6 +166,39 @@ async function createSubscriptionOnServer(planId){
   }
 
   return subscriptionID;
+}
+
+// Loads the PayPal JS SDK with a client-id fetched live from the backend
+// (which reads it from PAYPAL_CLIENT_ID in .env) instead of a value baked
+// into this file. Runs once; later calls reuse the same loaded SDK.
+let paypalReadyPromise = null;
+function ensurePaypalReady(){
+  if (paypalReadyPromise) return paypalReadyPromise;
+
+  paypalReadyPromise = fetch(API_BASE_URL + '/paypal/config')
+    .then(r => {
+      if (!r.ok) throw new Error('bad status ' + r.status);
+      return r.json();
+    })
+    .then(cfg => {
+      if (!cfg.client_id) throw new Error('no client_id in /paypal/config response');
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://www.paypal.com/sdk/js?client-id=' + encodeURIComponent(cfg.client_id) + '&vault=true&intent=subscription';
+        script.setAttribute('data-sdk-integration-source', 'button-factory');
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('PayPal SDK script failed to load'));
+        document.head.appendChild(script);
+      });
+    })
+    .catch(err => {
+      console.error('[VectraCore] Could not load PayPal SDK:', err);
+      document.getElementById('paypal-button-container').innerHTML =
+        '<div class="loading">PayPal checkout is unavailable right now. Please refresh or try again shortly.</div>';
+      throw err;
+    });
+
+  return paypalReadyPromise;
 }
 
 function renderPaypal(planId){
