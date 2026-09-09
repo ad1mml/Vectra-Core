@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Checkout - VectraCore</title>
     <meta name="description" content="Complete your VectraCore subscription checkout.">
+    <meta name="robots" content="noindex, follow">
     <link rel="canonical" href="https://vectracore.app/billing.html">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -101,6 +102,7 @@
             <div id="emailError" class="email-error">Enter the same verified email you used to create your VectraCore account.</div>
             <div id="paypal-button-container" class="paybox"><div class="loading">Loading secure checkout…</div></div>
             <div class="secure">Payments are processed by PayPal. Your PayPal payment details are handled by PayPal, not stored on this page.</div>
+            <div class="secure">By subscribing, you agree to VectraCore's <a href="terms-of-service.html" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Terms of Service</a> and <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Privacy Policy</a>.</div>
         </aside>
     </div>
 </main>
@@ -114,12 +116,12 @@
 const PLANS = {
   pro: {
     name:'Pro', type:'Serious analysis, every day', className:'pro',
-    price:'$19.99', period:'/ month', note:'First 2 months at the introductory price · then $99/month', id:'P-0E117512CY516264NNKQWZ6I',
+    price:'$19.99', period:'/ month', note:'First 2 months at the introductory price · then $99/month', id:'P-6R376963A16807448NKQ2RLA',
     details:['150 AI chart analyses per month','Unlimited chat with the trading AI — ask anything, anytime','Full technical breakdowns: structure, trend, key levels','Fundamental and geopolitical context woven into every answer','Save and revisit your analysis history']
   },
   vip: {
     name:'VIP', type:'Nothing capped, nothing missed', className:'vip',
-    price:'$49.99', period:'/ month', note:'First 2 months at the introductory price · then $219.99/month', id:'P-0NL76272BA6174733NKQWXPY',
+    price:'$49.99', period:'/ month', note:'First 2 months at the introductory price · then $219.99/month', id:'P-6XG61705DE291753SNKQ2STA',
     details:['Unlimited chart analyses — no monthly count to watch','Technical + fundamental analysis combined in one read','Multi-timeframe view on every chart you upload','Live economic calendar folded into the analysis','Track how a chart\'s structure shifts over time','Full analysis history, unlimited']
   }
 };

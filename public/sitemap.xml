@@ -20,7 +20,7 @@
   </url>
   <url>
     <loc>https://vectracore.app/contact-us.html</loc>
-    <lastmod>2026-09-06</lastmod>
+    <lastmod>2026-09-09</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
@@ -32,7 +32,19 @@
   </url>
   <url>
     <loc>https://vectracore.app/refund-policy.html</loc>
-    <lastmod>2026-07-16</lastmod>
+    <lastmod>2026-09-09</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://vectracore.app/terms-of-service.html</loc>
+    <lastmod>2026-09-09</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://vectracore.app/risk-disclosure.html</loc>
+    <lastmod>2026-09-09</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>

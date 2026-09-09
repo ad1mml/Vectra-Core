@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contact Us - VectraCore</title>
-    <meta name="description" content="Get in touch with VectraCore for questions, feedback, or partnership interest about our AI trading chart analysis tool.">
+    <meta name="description" content="Get in touch with VectraCore for support, billing questions, feedback, or partnership interest.">
     <link rel="canonical" href="https://vectracore.app/contact-us.html">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -29,34 +29,42 @@
         .logo h1 span { color: var(--accent-color); }
         header a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
         header a:hover { color: var(--text-main); }
-        main { max-width: 560px; margin: 0 auto; padding: 60px 24px 100px; }
-        h2.page-title { font-size: 2.2rem; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
-        .lede { color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; margin-bottom: 36px; }
-        .contact-form { display: flex; flex-direction: column; gap: 14px; }
-        .contact-input, .contact-textarea {
-            background-color: var(--panel-bg); border: 1px solid var(--border-color);
-            color: var(--text-main); padding: 14px; border-radius: 6px; font-size: 1rem;
-            outline: none; transition: border-color 0.2s; font-family: 'Inter', sans-serif;
+        main { max-width: 600px; margin: 0 auto; padding: 60px 24px 100px; }
+        h2.page-title { font-size: 2.2rem; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .lede { font-size: 1.05rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 40px; }
+        form { display: flex; flex-direction: column; gap: 16px; }
+        label { font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px; display: block; }
+        input[type="email"], textarea {
+            width: 100%; background-color: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 8px; padding: 13px 16px; color: var(--text-main); font-size: 0.95rem;
+            font-family: 'Inter', sans-serif; outline: none; transition: border-color 0.2s;
         }
-        .contact-textarea { resize: vertical; min-height: 140px; }
-        .contact-input:focus, .contact-textarea:focus { border-color: var(--accent-color); }
+        input[type="email"]:focus, textarea:focus { border-color: var(--accent-color); }
+        textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
+        .char-count { font-size: 0.75rem; color: var(--text-muted); text-align: right; margin-top: 4px; }
+        .field-error { color: #F87171; font-size: 0.82rem; margin-top: 4px; display: none; }
+        .honeypot { position: absolute; left: -9999px; }
         .submit-btn {
-            background-color: var(--accent-color); color: #fff; border: none; padding: 14px;
-            font-size: 1rem; font-weight: 700; border-radius: 6px; cursor: pointer;
-            transition: background-color 0.2s;
+            background: linear-gradient(120deg, #A78BFA, #7C3AED); color: #12081f;
+            border: none; border-radius: 10px; padding: 14px 32px; font-size: 1rem; font-weight: 700;
+            cursor: pointer; transition: filter 0.2s, transform 0.1s; margin-top: 8px;
         }
-        .submit-btn:hover { background-color: var(--accent-hover); }
-        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .status-msg { font-size: 0.85rem; margin-top: -4px; display: none; }
-        .status-msg.error { color: var(--accent-color); }
-        .status-msg.success { color: #4ade80; }
+        .submit-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .form-status {
+            border-radius: 8px; padding: 14px 16px; font-size: 0.9rem; display: none; margin-top: 8px;
+        }
+        .form-status.success { background-color: rgba(74, 222, 128, 0.12); border: 1px solid #4ADE80; color: #BBF7D0; }
+        .form-status.error { background-color: rgba(248, 113, 113, 0.12); border: 1px solid #F87171; color: #FECACA; }
+        .other-ways { margin-top: 48px; padding-top: 32px; border-top: 1px solid rgba(35, 44, 74, 0.4); }
+        .other-ways h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; }
+        .other-ways p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; }
+        .other-ways a { color: var(--accent-color); }
         footer { padding: 30px; text-align: center; border-top: 1px solid rgba(35, 44, 74, 0.3); font-size: 0.8rem; color: var(--text-muted); }
         @media (max-width: 640px) { header { padding: 20px 24px; } }
     </style>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
-
-    <!-- PWA -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#050A1A">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -70,7 +78,6 @@
             });
         }
     </script>
-
 </head>
 <body>
     <header>
@@ -79,15 +86,34 @@
 
     <main>
         <h2 class="page-title">Contact Us</h2>
-        <p class="lede">Questions, feedback, or partnership interest — send us a message and we'll get back to you.</p>
+        <p class="lede">Questions about your account, billing, or feedback on VectraCore — send us a message and we'll get back to you at the email you provide.</p>
 
-        <form class="contact-form" id="contact-form">
-            <input type="email" id="contact-email" class="contact-input" placeholder="Your email address" required>
-            <textarea id="contact-message" class="contact-textarea" placeholder="What's on your mind?" required></textarea>
-            <p class="status-msg error" id="contact-error">Something went wrong. Please try again.</p>
-            <p class="status-msg success" id="contact-success">Message sent — thanks for reaching out.</p>
+        <form id="contact-form" novalidate>
+            <input type="text" name="company" class="honeypot" id="contact-honey" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+            <div>
+                <label for="contact-email">Your email</label>
+                <input type="email" id="contact-email" name="email" placeholder="you@example.com" required>
+                <p class="field-error" id="email-field-error">Please enter a valid email address.</p>
+            </div>
+
+            <div>
+                <label for="contact-message">Message</label>
+                <textarea id="contact-message" name="message" placeholder="How can we help? Include any relevant details — technical support, billing, feedback, or partnership interest." minlength="10" maxlength="2000" required></textarea>
+                <div class="char-count"><span id="char-count-val">0</span> / 2000</div>
+                <p class="field-error" id="message-field-error">Please enter a message of at least 10 characters.</p>
+            </div>
+
             <button type="submit" class="submit-btn" id="contact-submit-btn">Send Message</button>
+
+            <div class="form-status success" id="contact-success">Thanks — your message has been sent. We'll get back to you by email.</div>
+            <div class="form-status error" id="contact-error">Your message couldn't be sent. Please try again.</div>
         </form>
+
+        <div class="other-ways">
+            <h3>Prefer social?</h3>
+            <p>You can also reach us on <a href="https://discord.gg/YqnghtPJX" target="_blank" rel="noopener noreferrer">Discord</a>, <a href="https://www.instagram.com/vectracoreofficial?igsh=bGN0ZjhvMnBjajcw" target="_blank" rel="noopener noreferrer">Instagram</a>, or <a href="https://www.tiktok.com/@vectracoreofficial" target="_blank" rel="noopener noreferrer">TikTok</a>.</p>
+        </div>
     </main>
 
     <footer>&copy; 2026 VectraCore Research.</footer>
@@ -95,23 +121,50 @@
     <script>
         const API_BASE_URL = window.location.protocol.startsWith('http')
             ? window.location.origin
-            : 'http://127.0.0.1:5000';
+            : 'https://api.vectracore.app';
 
         const form = document.getElementById('contact-form');
         const emailField = document.getElementById('contact-email');
         const messageField = document.getElementById('contact-message');
+        const emailError = document.getElementById('email-field-error');
+        const messageError = document.getElementById('message-field-error');
         const submitBtn = document.getElementById('contact-submit-btn');
-        const errorMsg = document.getElementById('contact-error');
-        const successMsg = document.getElementById('contact-success');
+        const successBox = document.getElementById('contact-success');
+        const errorBox = document.getElementById('contact-error');
+        const charCountVal = document.getElementById('char-count-val');
+
+        messageField.addEventListener('input', () => {
+            charCountVal.textContent = messageField.value.length;
+        });
+
+        function validEmail(value) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+        }
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            errorMsg.style.display = 'none';
-            successMsg.style.display = 'none';
+
+            // Honeypot — if a bot fills this hidden field, silently drop the submit.
+            if (document.getElementById('contact-honey').value !== '') return;
+
+            successBox.style.display = 'none';
+            errorBox.style.display = 'none';
+            emailError.style.display = 'none';
+            messageError.style.display = 'none';
 
             const email = emailField.value.trim();
             const message = messageField.value.trim();
-            if (!email || !message) return;
+            let hasError = false;
+
+            if (!validEmail(email)) {
+                emailError.style.display = 'block';
+                hasError = true;
+            }
+            if (message.length < 10) {
+                messageError.style.display = 'block';
+                hasError = true;
+            }
+            if (hasError) return;
 
             submitBtn.disabled = true;
             submitBtn.textContent = 'Sending...';
@@ -122,13 +175,18 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, message })
                 });
+                const result = await response.json().catch(() => ({}));
 
-                if (!response.ok) throw new Error('Submission failed');
+                if (!response.ok) {
+                    throw new Error(result.error || "Your message couldn't be sent. Please try again.");
+                }
 
-                successMsg.style.display = 'block';
+                successBox.style.display = 'block';
                 form.reset();
+                charCountVal.textContent = '0';
             } catch (err) {
-                errorMsg.style.display = 'block';
+                errorBox.textContent = err.message;
+                errorBox.style.display = 'block';
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Send Message';

@@ -183,8 +183,8 @@ PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
 PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
 PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "").strip()
 PAYPAL_PLAN_IDS = {
-    "pro_monthly": "P-0E117512CY516264NNKQWZ6I",
-    "vip_monthly": "P-0NL76272BA6174733NKQWXPY",
+    "pro_monthly": "P-6R376963A16807448NKQ2RLA",
+    "vip_monthly": "P-6XG61705DE291753SNKQ2STA",
 }
 PAYPAL_PLAN_TO_TIER = {
     PAYPAL_PLAN_IDS["pro_monthly"]: "pro",
@@ -578,7 +578,7 @@ def _send_verification_email(to_email: str, code: str) -> bool:
         return False
 
 
-def _create_or_update_account(email: str, plan: str, agreed_policies: bool = False) -> dict:
+def _create_or_update_account(email: str, plan: str, agreed_policies: bool = False, marketing_consent: bool = False) -> dict:
     """Same bookkeeping /register used to do — now only ever called after a
     code has been correctly verified, so an account is never created for an
     email the requester doesn't actually control."""
@@ -596,6 +596,10 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
             "verified": True,
             "agreed_policies": agreed_policies,
             "agreed_policies_at": now_str if agreed_policies else None,
+            # Separate from agreed_policies (legal, mandatory) — this tracks
+            # the optional "send me updates" checkbox so marketing sends
+            # never get bundled with required legal consent.
+            "marketing_consent": marketing_consent,
         }
     else:
         users[email]["plan"] = plan
@@ -603,6 +607,8 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
         if agreed_policies and not users[email].get("agreed_policies"):
             users[email]["agreed_policies"] = True
             users[email]["agreed_policies_at"] = now_str
+        if marketing_consent and not users[email].get("marketing_consent"):
+            users[email]["marketing_consent"] = True
     _save_json(USERS_FILE, users)
     return users[email]
 
@@ -1686,12 +1692,13 @@ def send_verification_code():
     if plan not in VALID_PLANS:
         plan = "default"
     agreed_policies = bool(data.get("agreed_policies"))
+    marketing_consent = bool(data.get("marketing_consent"))
 
     if not email or not _valid_email(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
 
     if not agreed_policies:
-        return jsonify({"error": "You must agree to the policies to continue."}), 400
+        return jsonify({"error": "You must agree to the Terms of Service and Privacy Policy to continue."}), 400
 
     pending = _load_json(PENDING_FILE, {})
     now = datetime.now()
@@ -1712,6 +1719,7 @@ def send_verification_code():
         "code_hash": _hash_code(email, code),
         "plan": plan,
         "agreed_policies": agreed_policies,
+        "marketing_consent": marketing_consent,
         "attempts": 0,
         "created_at": (existing or {}).get("created_at", now.strftime("%Y-%m-%d %H:%M:%S")),
         "expires_at": now.timestamp() + VERIFICATION_CODE_TTL_SECONDS,
@@ -1759,7 +1767,12 @@ def verify_code():
         return jsonify({"error": f"Incorrect code. {remaining} attempt(s) left."}), 400
 
     # Code matches — only now do we actually create/update the account.
-    account = _create_or_update_account(email, record["plan"], record.get("agreed_policies", False))
+    account = _create_or_update_account(
+        email,
+        record["plan"],
+        record.get("agreed_policies", False),
+        record.get("marketing_consent", False),
+    )
     del pending[email]
     _save_json(PENDING_FILE, pending)
 

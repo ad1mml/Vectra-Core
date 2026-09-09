@@ -224,6 +224,12 @@
             transform: translateY(-2px);
         }
 
+        .hero-subnote {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 18px;
+        }
+
         .feature-strip {
             display: flex;
             gap: 44px;
@@ -506,6 +512,123 @@
             color: var(--accent-color);
         }
 
+        .consent-row + .consent-row {
+            margin-top: 8px;
+        }
+
+        .workflow-section, .differentiation-section {
+            padding: 40px 24px 90px;
+            border-top: 1px solid rgba(35, 44, 74, 0.4);
+        }
+
+        .workflow-inner, .differentiation-inner {
+            max-width: 1080px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .section-eyebrow {
+            color: var(--accent-color);
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            margin-bottom: 14px;
+        }
+
+        .section-title {
+            font-size: 1.9rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 14px;
+        }
+
+        .section-sub {
+            color: var(--text-muted);
+            font-size: 1rem;
+            max-width: 640px;
+            margin: 0 auto 44px;
+            line-height: 1.6;
+        }
+
+        .workflow-steps {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            text-align: left;
+        }
+
+        .workflow-step {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 22px 18px;
+        }
+
+        .workflow-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-color);
+            border: 1px solid var(--accent-color);
+            font-size: 0.85rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 14px;
+        }
+
+        .workflow-step h4 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .workflow-step p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            line-height: 1.55;
+        }
+
+        .diff-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            text-align: left;
+        }
+
+        .diff-card {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 22px 20px;
+        }
+
+        .diff-card h4 {
+            font-size: 0.98rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        .diff-card p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 900px) {
+            .workflow-steps { grid-template-columns: repeat(2, 1fr); }
+            .diff-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 560px) {
+            .workflow-steps { grid-template-columns: 1fr; }
+            .diff-grid { grid-template-columns: 1fr; }
+            .section-title { font-size: 1.5rem; }
+        }
+
         .modal-links {
             display: flex;
             justify-content: space-between;
@@ -588,7 +711,7 @@
             <a href="pricing.html">Pricing</a>
             <a href="blog/ai-trading-chart-analysis.html">Blog</a>
             <a href="privacy-policy.html">Privacy Policy</a>
-            <a href="#">Terms</a>
+            <a href="terms-of-service.html">Terms</a>
             <button id="launch-app-btn" class="cta-btn trigger-popup-work" style="padding: 10px 20px; font-size: 0.9rem; box-shadow: none;">Launch App</button>
         </div>
     </header>
@@ -606,9 +729,11 @@
         <div class="button-group">
             <button class="cta-btn trigger-popup-work">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><path d="M3 17 L10 10 L14 14 L21 6"/><path d="M21 6 L21 12 M21 6 L15 6"/></svg>
-                Start Analyzing
+                Start Analyzing Free
             </button>
+            <a href="pricing.html" class="secondary-btn">View Pricing</a>
         </div>
+        <p class="hero-subnote">Free on the Default plan — no card required to start.</p>
 
         <div class="feature-strip">
             <div class="feature-item">
@@ -630,21 +755,96 @@
         </div>
     </main>
 
+    <section class="workflow-section">
+        <div class="workflow-inner">
+            <div class="section-eyebrow">HOW IT WORKS</div>
+            <h3 class="section-title">From chart to structured analysis</h3>
+            <p class="section-sub">Upload a chart and VectraCore reasons through it in layers — the same way a structural trader would, just faster.</p>
+
+            <div class="workflow-steps">
+                <div class="workflow-step">
+                    <div class="workflow-num">1</div>
+                    <h4>Chart uploaded</h4>
+                    <p>You share a chart and, optionally, a specific question about the setup.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-num">2</div>
+                    <h4>Market structure analyzed</h4>
+                    <p>Trend direction, higher highs/lows, and structural breaks are identified first.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-num">3</div>
+                    <h4>Liquidity &amp; key zones</h4>
+                    <p>Liquidity, fair value gaps, order blocks, and supply/demand zones are mapped onto the structure.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-num">4</div>
+                    <h4>Market context</h4>
+                    <p>Live headlines and macro backdrop are weighed alongside the technical read.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-num">5</div>
+                    <h4>Structured answer</h4>
+                    <p>You get a grounded read of the setup — including a clear WAIT when conditions aren't strong enough for a call.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="differentiation-section">
+        <div class="differentiation-inner">
+            <div class="section-eyebrow">WHY VECTRACORE</div>
+            <h3 class="section-title">Not just a signal. The structure behind the setup.</h3>
+            <p class="section-sub">VectraCore is built as an analytical workspace, not a signal generator — cross-checking multiple angles instead of forcing every chart into one framework.</p>
+
+            <div class="diff-grid">
+                <div class="diff-card">
+                    <h4>Structure-first</h4>
+                    <p>Reads trend, structure, and key levels before anything else — the foundation everything else is checked against.</p>
+                </div>
+                <div class="diff-card">
+                    <h4>Liquidity-aware</h4>
+                    <p>Maps liquidity, order blocks, and fair value gaps rather than relying on generic indicator commentary.</p>
+                </div>
+                <div class="diff-card">
+                    <h4>Multi-timeframe context</h4>
+                    <p>Cross-checks a setup against higher and lower timeframes instead of reading a single chart in isolation.</p>
+                </div>
+                <div class="diff-card">
+                    <h4>Macro-grounded</h4>
+                    <p>Folds in live market headlines so a purely technical read isn't blind to what's actually happening.</p>
+                </div>
+                <div class="diff-card">
+                    <h4>Comfortable saying WAIT</h4>
+                    <p>Not every chart is a trade. VectraCore is built to flag when a setup isn't strong enough to act on.</p>
+                </div>
+                <div class="diff-card">
+                    <h4>An analytical workspace</h4>
+                    <p>A tool to think through a setup with — not a black-box BUY/SELL call to follow blindly.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <div class="modal-overlay" id="registration-modal">
         <div class="modal-content">
-            <button class="close-btn" id="modal-close">&times;</button>
+            <button class="close-btn" id="modal-close" aria-label="Close">&times;</button>
 
             <div class="modal-step" id="step-email">
                 <h3>Unlock <span>VectraCore</span></h3>
                 <p>Enter your email to access our professional terminal workspaces.</p>
 
                 <form class="modal-form" id="email-form">
-                    <input type="email" id="user-email-field" class="modal-input" placeholder="Enter your email address" required>
+                    <input type="email" id="user-email-field" class="modal-input" placeholder="Enter your email address" aria-label="Email address" required>
                     <div class="consent-row">
                         <input type="checkbox" id="policy-agree-checkbox" required>
-                        <label for="policy-agree-checkbox">I agree to all <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer">policies</a>.</label>
+                        <label for="policy-agree-checkbox">I agree to the <a href="terms-of-service.html" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</label>
                     </div>
-                    <p class="modal-error" id="email-error-text">Something went wrong. Please try again.</p>
+                    <div class="consent-row">
+                        <input type="checkbox" id="marketing-consent-checkbox">
+                        <label for="marketing-consent-checkbox">Send me product updates and offers.</label>
+                    </div>
+                    <p class="modal-error" id="email-error-text">Unable to send the verification code. Please try again.</p>
                     <button type="submit" class="submit-btn" id="email-submit-btn">Send Verification Code</button>
                 </form>
             </div>
@@ -654,7 +854,7 @@
                 <p>We sent a 6-digit code to <strong id="code-target-email"></strong>. Enter it below to verify your email.</p>
 
                 <form class="modal-form" id="code-form">
-                    <input type="text" id="verification-code-field" class="modal-input code-input" placeholder="000000" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required>
+                    <input type="text" id="verification-code-field" class="modal-input code-input" placeholder="000000" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" aria-label="6-digit verification code" required>
                     <p class="modal-error" id="code-error-text">Incorrect code. Please try again.</p>
                     <button type="submit" class="submit-btn" id="code-submit-btn">Verify &amp; Continue</button>
                 </form>
@@ -706,7 +906,9 @@
             <div class="footer-col">
                 <h4>Legal</h4>
                 <a href="privacy-policy.html">Privacy Policy</a>
+                <a href="terms-of-service.html">Terms of Service</a>
                 <a href="refund-policy.html">Refund Policy</a>
+                <a href="risk-disclosure.html">Risk Disclosure</a>
             </div>
         </div>
 
@@ -822,6 +1024,7 @@
         const emailForm = document.getElementById('email-form');
         const emailField = document.getElementById('user-email-field');
         const policyCheckbox = document.getElementById('policy-agree-checkbox');
+        const marketingCheckbox = document.getElementById('marketing-consent-checkbox');
         const emailSubmitBtn = document.getElementById('email-submit-btn');
         const emailErrorText = document.getElementById('email-error-text');
 
@@ -874,11 +1077,16 @@
             const response = await fetch(`${API_BASE_URL}/send-verification-code`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, plan: selectedPlan, agreed_policies: true })
+                body: JSON.stringify({
+                    email,
+                    plan: selectedPlan,
+                    agreed_policies: true,
+                    marketing_consent: Boolean(marketingCheckbox && marketingCheckbox.checked)
+                })
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(result.error || 'Could not send the verification code.');
+                throw new Error(result.error || 'Unable to send the verification code. Please try again.');
             }
             return result;
         }
@@ -935,7 +1143,7 @@
             if (!emailInput) return;
 
             if (!policyCheckbox.checked) {
-                emailErrorText.textContent = 'Please agree to the policies to continue.';
+                emailErrorText.textContent = 'Please agree to the Terms of Service and Privacy Policy to continue.';
                 emailErrorText.style.display = 'block';
                 return;
             }
