@@ -1606,6 +1606,52 @@ def paypal_webhook():
         return jsonify({"error": "Webhook processing failed."}), 500
 
 
+@app.route("/admin/grant-access", methods=["POST"])
+def admin_grant_access():
+    """
+    Owner-only tool for comping free Pro/VIP access, completely outside the
+    PayPal flow. Protected the same way as /admin/feedback and /admin/users
+    — a query-string ?key=ADMIN_SECRET_KEY that must match the server's
+    ADMIN_SECRET_KEY env var. Never expose this key in any frontend file.
+
+    POST /admin/grant-access?key=YOUR_ADMIN_SECRET_KEY
+    Body: {"email": "someone@example.com", "plan": "vip"}   # or "pro", or "default" to revoke
+
+    This only ever writes to users.json — it never talks to PayPal, so it
+    cannot create a real charge or a real PayPal subscription. Revoking is
+    the same call with "plan": "default".
+    """
+    user_key = request.args.get("key")
+    if not user_key or user_key != ADMIN_SECRET_KEY:
+        return jsonify({"error": "Not authorized."}), 403
+
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    plan = (data.get("plan") or "").strip().lower()
+
+    if not email or not _valid_email(email):
+        return jsonify({"error": "A valid email is required."}), 400
+    if plan not in VALID_PLANS:
+        return jsonify({"error": "plan must be one of: " + ", ".join(VALID_PLANS)}), 400
+
+    users = _load_json(USERS_FILE, {})
+    account = users.get(email, {"registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+    account["verified"] = True
+    account["plan"] = plan
+    account["comped"] = plan != "default"  # marks this as an owner-granted freebie, not a real payer
+    if plan != "default":
+        account["subscription_status"] = "ACTIVE"
+        account["paypal_subscription_id"] = None
+        account["paypal_plan_id"] = None
+    else:
+        account["subscription_status"] = None
+    account["subscription_updated_at"] = datetime.utcnow().isoformat()
+    users[email] = account
+    _save_json(USERS_FILE, users)
+
+    return jsonify({"status": "success", "email": email, "plan": plan, "comped": account["comped"]}), 200
+
+
 @app.route("/register", methods=["POST"])
 def register():
     data = request.get_json(silent=True) or {}
@@ -1729,11 +1775,12 @@ def get_usage_route():
     """Lets the frontend show 'X/20 charts used this month' and a countdown
     to the next reset at any time — not just right after an upload."""
     email = (request.args.get("email") or "").strip().lower()
-    plan = (request.args.get("plan") or "default").strip().lower()
     if not email:
         return jsonify({"error": "Email required"}), 400
-    if plan not in VALID_PLANS:
-        plan = "default"
+    # The plan must come from the verified account, never from the client —
+    # otherwise anyone could pass ?plan=vip and see (or fake) an "unlimited"
+    # usage response regardless of what they're actually subscribed to.
+    plan = _effective_plan_for_email(email, request.args.get("plan") or "default")
 
     if plan == "vip":
         return jsonify({"unlimited": True}), 200
@@ -1784,7 +1831,9 @@ def list_sessions():
     working normally (analysis + follow-ups), it just never gets a
     browsable history."""
     email = (request.args.get("email") or "guest@vectracore.ai").strip().lower()
-    plan = (request.args.get("plan") or "default").strip().lower()
+    # Never trust a client-supplied plan for gating a paid feature — look up
+    # what this email is actually subscribed to.
+    plan = _effective_plan_for_email(email, request.args.get("plan") or "default")
 
     if plan not in SESSION_PLANS:
         return jsonify({
@@ -1814,7 +1863,9 @@ def get_session(session_id):
     """Returns one full session (all turns) so it can be reopened and
     continued, or replayed read-only, in the Recents sidebar."""
     email = (request.args.get("email") or "guest@vectracore.ai").strip().lower()
-    plan = (request.args.get("plan") or "default").strip().lower()
+    # Never trust a client-supplied plan for gating a paid feature — look up
+    # what this email is actually subscribed to.
+    plan = _effective_plan_for_email(email, request.args.get("plan") or "default")
 
     if plan not in SESSION_PLANS:
         return jsonify({

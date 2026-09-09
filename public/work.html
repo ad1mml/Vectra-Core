@@ -1123,8 +1123,8 @@
             : 'http://127.0.0.1:5000';
 
         const activeProfile = localStorage.getItem('vectracore_user_email') || 'guest@vectracore.ai';
-        const currentPlan = localStorage.getItem('vectracore_plan') || 'default';
-        const sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
+        let currentPlan = localStorage.getItem('vectracore_plan') || 'default';
+        let sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
         let currentSessionId = null;
 
         document.getElementById('current-user').textContent = activeProfile;
@@ -1692,40 +1692,66 @@
                 fbSubmitBtn.textContent = "Submit Feedback";
             }
         });
-        const plan = localStorage.getItem("vectracore_plan") || "default";
+        function renderPlanBadge(planValue) {
+            const badge = document.getElementById("navbar-plan-badge");
+            badge.classList.remove("plan-default", "plan-pro", "plan-vip");
+            badge.style.background = "";
 
-const badge = document.getElementById("navbar-plan-badge");
-badge.classList.remove("plan-default", "plan-pro", "plan-vip");
-badge.style.background = "";
+            if (planValue === "default") {
+                badge.classList.add("plan-default");
+                badge.innerHTML = `<span class="badge-label">✨ DEFAULT</span>`;
+            }
 
-if(plan === "default"){
-    badge.classList.add("plan-default");
-    badge.innerHTML = `<span class="badge-label">✨ DEFAULT</span>`;
-}
+            if (planValue === "pro") {
+                badge.classList.add("plan-pro");
+                badge.innerHTML = `
+                    <span class="pro-leaf pro-leaf-1">🍃</span>
+                    <span class="pro-leaf pro-leaf-2">🌿</span>
+                    <span class="pro-leaf pro-leaf-3">🍃</span>
+                    <span class="badge-label">🌱 PRO</span>
+                `;
+            }
 
-if(plan === "pro"){
-    badge.classList.add("plan-pro");
-    badge.innerHTML = `
-        <span class="pro-leaf pro-leaf-1">🍃</span>
-        <span class="pro-leaf pro-leaf-2">🌿</span>
-        <span class="pro-leaf pro-leaf-3">🍃</span>
-        <span class="badge-label">🌱 PRO</span>
-    `;
-}
+            if (planValue === "vip") {
+                badge.classList.add("plan-vip");
+                badge.innerHTML = `
+                    <span class="vip-spark" style="left:12%; animation-delay:0s;"></span>
+                    <span class="vip-spark" style="left:32%; animation-delay:0.6s;"></span>
+                    <span class="vip-spark" style="left:58%; animation-delay:1.2s;"></span>
+                    <span class="vip-spark" style="left:78%; animation-delay:1.9s;"></span>
+                    <span class="badge-label">👑 VIP</span>
+                `;
+            }
+        }
 
-if(plan === "vip"){
-    badge.classList.add("plan-vip");
-    badge.innerHTML = `
-        <span class="vip-spark" style="left:12%; animation-delay:0s;"></span>
-        <span class="vip-spark" style="left:32%; animation-delay:0.6s;"></span>
-        <span class="vip-spark" style="left:58%; animation-delay:1.2s;"></span>
-        <span class="vip-spark" style="left:78%; animation-delay:1.9s;"></span>
-        <span class="badge-label">👑 VIP</span>
-    `;
-}
+        // Paint immediately from whatever's cached locally, so the badge
+        // isn't blank while we wait on the network.
+        renderPlanBadge(currentPlan);
+        refreshCreditsBadge();
 
-refreshCreditsBadge();
-                 
+        // Then confirm against the server — the account record in
+        // users.json is the only source of truth for what plan someone is
+        // actually on. localStorage is just a cache and can go stale (e.g.
+        // after an admin-granted upgrade, a plan change, or a cancellation)
+        // so it must never be trusted on its own for what the UI shows.
+        (async function syncPlanFromServer() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/account?email=${encodeURIComponent(activeProfile)}`);
+                if (!response.ok) return;
+                const account = await response.json();
+                const confirmedPlan = account.plan || 'default';
+                if (confirmedPlan !== currentPlan) {
+                    currentPlan = confirmedPlan;
+                    sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
+                    localStorage.setItem('vectracore_plan', currentPlan);
+                    renderPlanBadge(currentPlan);
+                    refreshCreditsBadge();
+                }
+            } catch (err) {
+                console.error('Failed to verify plan with server:', err);
+            }
+        })();
+
     </script>
 </body>
 </html>
