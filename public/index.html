@@ -688,6 +688,89 @@
             .feature-item { flex: 1 1 100%; }
             .modal-content { padding: 28px 22px; }
         }
+
+        /* --- Neptune winrate popup --- */
+        .neptune-popup {
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(160deg, var(--panel-bg), #0A0F24);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 14px 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.45), 0 0 0 1px rgba(139,92,246,0.08);
+            max-width: 280px;
+            opacity: 0;
+            transform: translateY(16px) scale(0.97);
+            transition: opacity 0.45s ease, transform 0.45s ease;
+            pointer-events: none;
+        }
+
+        .neptune-popup.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        .neptune-popup .pulse-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #34D399;
+            flex-shrink: 0;
+            box-shadow: 0 0 0 rgba(52, 211, 153, 0.6);
+            animation: neptune-pulse 2s infinite;
+        }
+
+        @keyframes neptune-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+            70% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+        }
+
+        .neptune-popup .neptune-text {
+            font-size: 0.82rem;
+            line-height: 1.4;
+            color: var(--text-main);
+        }
+
+        .neptune-popup .neptune-text .neptune-label {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+
+        .neptune-popup .neptune-text b {
+            color: #C4B5FD;
+            font-weight: 700;
+        }
+
+        .neptune-popup .neptune-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 2px;
+            margin-left: 2px;
+            flex-shrink: 0;
+            transition: color 0.2s;
+        }
+
+        .neptune-popup .neptune-close:hover {
+            color: var(--text-main);
+        }
+
+        @media (max-width: 480px) {
+            .neptune-popup { left: 14px; right: 14px; max-width: none; bottom: 14px; }
+        }
     </style>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
@@ -705,7 +788,7 @@
     <header>
         <div class="logo">
             <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <h1>Vectra <span>Core</span></h1>
+            <h1>Vectra<span>Core</span></h1>
         </div>
         <div class="nav-actions">
             <a href="pricing.html">Pricing</a>
@@ -867,14 +950,23 @@
         </div>
     </div>
 
+    <div class="neptune-popup" id="neptune-popup">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        <div class="neptune-text">
+            <span class="neptune-label">VectraCore &mdash; Neptune 2.1</span>
+            currently at <b>83.9% winrate</b>
+        </div>
+        <button type="button" class="neptune-close" id="neptune-close" aria-label="Dismiss">&times;</button>
+    </div>
+
     <footer>
         <div class="footer-main">
             <div class="footer-brand">
                 <div class="footer-logo-row">
                     <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    <h1>Vectra <span>Core</span></h1>
+                    <h1>Vectra<span>Core</span></h1>
                 </div>
-                <p>Institutional-style SMC & liquidity analysis, built for active currency, stock, and index traders.</p>
+                <p>Institutional-style structural and liquidity analysis, built for active currency, stock, and index traders.</p>
                 <div class="footer-social">
                     <a href="https://www.instagram.com/vectracoreofficial?igsh=bGN0ZjhvMnBjajcw" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1228,6 +1320,25 @@
             codeErrorText.style.display = 'none';
             showStep('email');
         });
+
+        // --- Neptune winrate popup ---
+        // Shows a couple seconds after load so it doesn't compete with the
+        // page's own entrance; stays dismissed for the rest of the browser
+        // session once closed so it doesn't nag on every page view.
+        (function () {
+            const popup = document.getElementById('neptune-popup');
+            const closeBtn = document.getElementById('neptune-close');
+            if (!popup || !closeBtn) return;
+
+            if (sessionStorage.getItem('vectracore_neptune_popup_dismissed')) return;
+
+            setTimeout(() => popup.classList.add('show'), 1400);
+
+            closeBtn.addEventListener('click', () => {
+                popup.classList.remove('show');
+                sessionStorage.setItem('vectracore_neptune_popup_dismissed', '1');
+            });
+        })();
     </script>
 
 </body>
