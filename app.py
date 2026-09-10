@@ -351,6 +351,31 @@ def _load_json(path, default):
 def _save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# users.json concurrency guard.
+#
+# Every route below does the same load-the-whole-file -> modify one email's
+# entry -> write-the-whole-file-back dance, with no locking. The webhook
+# handler in particular fires this from a background thread
+# (threading.Thread(target=_process_async...)) specifically so it can ack
+# PayPal fast, which means it can easily overlap with a concurrent
+# create_paypal_subscription, admin_grant_access, or /register call.
+#
+# Without a lock, two overlapping load->modify->save cycles are a classic
+# lost-update race: whichever one calls _save_json last wins and silently
+# overwrites the file with whatever it had in memory at the moment it
+# loaded — wiping out any other email's update that landed in between. No
+# exception is raised anywhere, so this fails completely silently (exactly
+# the "one purchase worked, the others quietly vanished" symptom).
+#
+# _users_lock serializes every read-modify-write cycle against USERS_FILE.
+# It's a plain in-process threading.Lock, which is sufficient here because
+# all writers (webhook thread + Flask request-handling threads) live in
+# this single process; it would need to be a cross-process/file lock if
+# this were ever run with multiple worker processes (e.g. gunicorn -w N>1).
+_users_lock = threading.Lock()
 def get_usage():
     return _load_json("usage.json", {})
 
@@ -588,30 +613,31 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
         history[email] = []
         _save_json(HISTORY_FILE, history)
 
-    users = _load_json(USERS_FILE, {})
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    if email not in users:
-        users[email] = {
-            "plan": plan,
-            "registered_at": now_str,
-            "verified": True,
-            "agreed_policies": agreed_policies,
-            "agreed_policies_at": now_str if agreed_policies else None,
-            # Separate from agreed_policies (legal, mandatory) — this tracks
-            # the optional "send me updates" checkbox so marketing sends
-            # never get bundled with required legal consent.
-            "marketing_consent": marketing_consent,
-        }
-    else:
-        users[email]["plan"] = plan
-        users[email]["verified"] = True
-        if agreed_policies and not users[email].get("agreed_policies"):
-            users[email]["agreed_policies"] = True
-            users[email]["agreed_policies_at"] = now_str
-        if marketing_consent and not users[email].get("marketing_consent"):
-            users[email]["marketing_consent"] = True
-    _save_json(USERS_FILE, users)
-    return users[email]
+    with _users_lock:
+        users = _load_json(USERS_FILE, {})
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if email not in users:
+            users[email] = {
+                "plan": plan,
+                "registered_at": now_str,
+                "verified": True,
+                "agreed_policies": agreed_policies,
+                "agreed_policies_at": now_str if agreed_policies else None,
+                # Separate from agreed_policies (legal, mandatory) — this tracks
+                # the optional "send me updates" checkbox so marketing sends
+                # never get bundled with required legal consent.
+                "marketing_consent": marketing_consent,
+            }
+        else:
+            users[email]["plan"] = plan
+            users[email]["verified"] = True
+            if agreed_policies and not users[email].get("agreed_policies"):
+                users[email]["agreed_policies"] = True
+                users[email]["agreed_policies_at"] = now_str
+            if marketing_consent and not users[email].get("marketing_consent"):
+                users[email]["marketing_consent"] = True
+        _save_json(USERS_FILE, users)
+        return users[email]
 
 
 # ---------------------------------------------------------------------------
@@ -666,25 +692,26 @@ def _set_subscription_state(email, status, subscription_id=None, plan_id=None, e
     email = (email or "").strip().lower()
     if not email:
         return None
-    users = _load_json(USERS_FILE, {})
-    account = users.get(email, {"plan": "default", "verified": True})
-    status = (status or "").upper()
-    tier = PAYPAL_PLAN_TO_TIER.get(plan_id)
-    account["subscription_status"] = status
-    if subscription_id:
-        account["paypal_subscription_id"] = subscription_id
-    if plan_id:
-        account["paypal_plan_id"] = plan_id
-    if event_type:
-        account["last_paypal_event"] = event_type
-    account["subscription_updated_at"] = datetime.utcnow().isoformat()
-    if status == "ACTIVE" and tier:
-        account["plan"] = tier
-    elif status in {"CANCELLED", "EXPIRED", "SUSPENDED", "REVOKED"}:
-        account["plan"] = "default"
-    users[email] = account
-    _save_json(USERS_FILE, users)
-    return account
+    with _users_lock:
+        users = _load_json(USERS_FILE, {})
+        account = users.get(email, {"plan": "default", "verified": True})
+        status = (status or "").upper()
+        tier = PAYPAL_PLAN_TO_TIER.get(plan_id)
+        account["subscription_status"] = status
+        if subscription_id:
+            account["paypal_subscription_id"] = subscription_id
+        if plan_id:
+            account["paypal_plan_id"] = plan_id
+        if event_type:
+            account["last_paypal_event"] = event_type
+        account["subscription_updated_at"] = datetime.utcnow().isoformat()
+        if status == "ACTIVE" and tier:
+            account["plan"] = tier
+        elif status in {"CANCELLED", "EXPIRED", "SUSPENDED", "REVOKED"}:
+            account["plan"] = "default"
+        users[email] = account
+        _save_json(USERS_FILE, users)
+        return account
 
 
 def _verify_paypal_webhook(headers, event):
@@ -714,7 +741,8 @@ def _handle_paypal_webhook(event):
     status = (resource.get("status") or "").upper()
     email = ((resource.get("subscriber") or {}).get("email_address") or "").strip().lower()
     if not email and sub_id:
-        users = _load_json(USERS_FILE, {})
+        with _users_lock:
+            users = _load_json(USERS_FILE, {})
         for candidate, account in users.items():
             if account.get("paypal_subscription_id") == sub_id:
                 email = candidate
@@ -1550,8 +1578,9 @@ def create_paypal_subscription():
     if not plan_id:
         return jsonify({"error": "Invalid plan.", "available_plans": list(PAYPAL_PLAN_IDS)}), 400
 
-    users = _load_json(USERS_FILE, {})
-    account = users.get(email)
+    with _users_lock:
+        users = _load_json(USERS_FILE, {})
+        account = users.get(email)
     if not account or not account.get("verified"):
         return jsonify({"error": "Verify your email and create your VectraCore account before subscribing."}), 403
     if account.get("subscription_status") == "ACTIVE" and account.get("paypal_subscription_id"):
@@ -1580,12 +1609,18 @@ def create_paypal_subscription():
 
     subscription_id = payload.get("id")
     approval_url = next((x.get("href") for x in payload.get("links", []) if x.get("rel") in ("approve", "payer-action")), None)
-    account["paypal_subscription_id"] = subscription_id
-    account["paypal_plan_id"] = plan_id
-    account["subscription_status"] = "APPROVAL_PENDING"
-    account["subscription_updated_at"] = datetime.utcnow().isoformat()
-    users[email] = account
-    _save_json(USERS_FILE, users)
+    with _users_lock:
+        # Re-load rather than reuse the earlier snapshot — another writer
+        # (e.g. the webhook thread) may have changed users.json while we
+        # were waiting on the PayPal API call above.
+        users = _load_json(USERS_FILE, {})
+        account = users.get(email, account)
+        account["paypal_subscription_id"] = subscription_id
+        account["paypal_plan_id"] = plan_id
+        account["subscription_status"] = "APPROVAL_PENDING"
+        account["subscription_updated_at"] = datetime.utcnow().isoformat()
+        users[email] = account
+        _save_json(USERS_FILE, users)
     return jsonify({
         "success": True, "subscription_id": subscription_id, "plan": PAYPAL_PLAN_TO_TIER[plan_id],
         "plan_key": plan_key, "plan_id": plan_id, "approval_url": approval_url, "status": payload.get("status"),
@@ -1652,20 +1687,21 @@ def admin_grant_access():
     if plan not in VALID_PLANS:
         return jsonify({"error": "plan must be one of: " + ", ".join(VALID_PLANS)}), 400
 
-    users = _load_json(USERS_FILE, {})
-    account = users.get(email, {"registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-    account["verified"] = True
-    account["plan"] = plan
-    account["comped"] = plan != "default"  # marks this as an owner-granted freebie, not a real payer
-    if plan != "default":
-        account["subscription_status"] = "ACTIVE"
-        account["paypal_subscription_id"] = None
-        account["paypal_plan_id"] = None
-    else:
-        account["subscription_status"] = None
-    account["subscription_updated_at"] = datetime.utcnow().isoformat()
-    users[email] = account
-    _save_json(USERS_FILE, users)
+    with _users_lock:
+        users = _load_json(USERS_FILE, {})
+        account = users.get(email, {"registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        account["verified"] = True
+        account["plan"] = plan
+        account["comped"] = plan != "default"  # marks this as an owner-granted freebie, not a real payer
+        if plan != "default":
+            account["subscription_status"] = "ACTIVE"
+            account["paypal_subscription_id"] = None
+            account["paypal_plan_id"] = None
+        else:
+            account["subscription_status"] = None
+        account["subscription_updated_at"] = datetime.utcnow().isoformat()
+        users[email] = account
+        _save_json(USERS_FILE, users)
 
     return jsonify({"status": "success", "email": email, "plan": plan, "comped": account["comped"]}), 200
 
@@ -1688,12 +1724,13 @@ def register():
 
     # Registration establishes the account identity. Paid access is granted
     # only after a verified PayPal subscription webhook.
-    users = _load_json(USERS_FILE, {})
-    if email not in users:
-        users[email] = {"plan": "default", "registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "verified": True}
-    else:
-        users[email]["verified"] = True
-    _save_json(USERS_FILE, users)
+    with _users_lock:
+        users = _load_json(USERS_FILE, {})
+        if email not in users:
+            users[email] = {"plan": "default", "registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "verified": True}
+        else:
+            users[email]["verified"] = True
+        _save_json(USERS_FILE, users)
     return jsonify({"status": "success", "email": email, "plan": _effective_plan_for_email(email, plan)}), 200
 
 
