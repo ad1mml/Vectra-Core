@@ -49,7 +49,7 @@ from prompts.vip_prompt import VIP_PROMPT
 from prompts.default_prompt import DEFAULT_PROMPT
 from prompts.pro_prompt import PRO_PROMPT
 import requests
-from flask import Flask, request, jsonify, render_template_string, Response
+from flask import Flask, request, jsonify, render_template_string, Response, redirect
 from flask_cors import CORS
 from PIL import Image
 from dotenv import load_dotenv 
@@ -1661,6 +1661,10 @@ def confirm_paypal_subscription():
         account = users.get(email)
     if not account or not account.get("verified"):
         return jsonify({"error": "Verify your VectraCore account before confirming a subscription."}), 403
+
+    stored_subscription_id = (account.get("paypal_subscription_id") or "").strip()
+    if not stored_subscription_id or stored_subscription_id != subscription_id:
+        return jsonify({"error": "This PayPal subscription is not the one linked to this account."}), 403
 
     try:
         r = _paypal_request("GET", f"/v1/billing/subscriptions/{subscription_id}")
