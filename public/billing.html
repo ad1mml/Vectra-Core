@@ -234,11 +234,48 @@ function renderPaypal(planId){
       return await createSubscriptionOnServer(planId);
     },
 
-    onApprove:(data)=>{
+    onApprove:async(data)=>{
       localStorage.setItem('vectracore_subscription_id',data.subscriptionID || data.subscription_id);
-      localStorage.setItem('vectracore_plan',selected);
       localStorage.setItem('vectracore_billing_cycle','monthly');
-      window.location.href='index.html?subscription=success&plan='+encodeURIComponent(selected);
+
+      const email = emailInput.value.trim().toLowerCase();
+      const box = document.getElementById('paypal-button-container');
+      box.innerHTML = '<div class="loading">Activating your '+PLANS[selected].name+' access…</div>';
+
+      // PayPal confirms the charge instantly, but the backend only
+      // promotes the account once BILLING.SUBSCRIPTION.ACTIVATED lands on
+      // /paypal/webhook — which can take a few seconds. /account is the
+      // same source of truth work.html and index.html rely on, so we poll
+      // it here rather than trusting the local "selected" plan, to avoid
+      // landing the user on the terminal before the backend has actually
+      // activated the plan.
+      const deadline = Date.now() + 30000;
+      let confirmedPlan = null;
+      while (Date.now() < deadline) {
+        try {
+          const res = await fetch(API_BASE_URL + '/account?email=' + encodeURIComponent(email));
+          if (res.ok) {
+            const account = await res.json();
+            if (account.plan === selected) { confirmedPlan = account.plan; break; }
+          }
+        } catch (err) {
+          console.error('[VectraCore] /account poll failed:', err);
+        }
+        await new Promise(r => setTimeout(r, 1500));
+      }
+
+      // Pre-warm both localStorage keys the rest of the site reads:
+      // work.html's terminal badge/API calls key off vectracore_plan, and
+      // index.html's signup/registration prefill keys off
+      // vectracore_selected_plan. Each page still re-checks /account itself
+      // as the authoritative source, but seeding both avoids a flash of
+      // the wrong plan on first paint.
+      const planToStore = confirmedPlan || selected;
+      localStorage.setItem('vectracore_plan', planToStore);
+      localStorage.setItem('vectracore_selected_plan', planToStore);
+
+      const status = confirmedPlan ? 'success' : 'pending';
+      window.location.href='index.html?subscription='+status+'&plan='+encodeURIComponent(selected);
     },
 
     onError:(err)=>{
