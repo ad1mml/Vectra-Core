@@ -1010,11 +1010,8 @@
     </footer>
 
     <script>
-        // Same-origin when this page is served by the Flask backend itself;
-        // falls back to localhost:5000 for local file:// testing.
-        const API_BASE_URL = window.location.protocol.startsWith('http')
-            ? window.location.origin
-            : 'http://127.0.0.1:5000';
+        // All frontend API calls use the deployed Flask backend.
+        const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
 
         // --- PWA: install prompt wired to the "Launch App" button ---------
         // Chrome/Edge/Android fire beforeinstallprompt only once specific

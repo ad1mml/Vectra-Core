@@ -680,11 +680,19 @@ def _paypal_plan_key(plan):
 
 def _effective_plan_for_email(email, requested_plan="default"):
     # Browser-supplied plan values are never trusted for paid access.
+    # For an ACTIVE PayPal subscription, derive the tier from the stored
+    # PayPal plan ID first. That prevents a stale/overwritten `account["plan"]`
+    # value such as "default" from masking a real Pro/VIP subscription.
     email = (email or "").strip().lower()
     users = _load_json(USERS_FILE, {})
     account = users.get(email, {})
-    if account.get("subscription_status") == "ACTIVE" and account.get("plan") in ("pro", "vip"):
-        return account["plan"]
+    if account.get("subscription_status") == "ACTIVE":
+        paypal_tier = PAYPAL_PLAN_TO_TIER.get(account.get("paypal_plan_id"))
+        if paypal_tier in ("pro", "vip"):
+            return paypal_tier
+        if account.get("plan") in ("pro", "vip"):
+            return account["plan"]
+    # Never grant paid access from a browser-supplied requested_plan.
     return "default"
 
 
@@ -1757,33 +1765,9 @@ def admin_grant_access():
     return jsonify({"status": "success", "email": email, "plan": plan, "comped": account["comped"]}), 200
 
 
-@app.route("/register", methods=["POST"])
-def register():
-    data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
-    if not email:
-        return jsonify({"error": "Email required"}), 400
-
-    plan = (data.get("plan") or "default").strip().lower()
-    if plan not in VALID_PLANS:
-        plan = "default"
-
-    history = _load_json(HISTORY_FILE, {})
-    if email not in history:
-        history[email] = []
-        _save_json(HISTORY_FILE, history)
-
-    # Registration establishes the account identity. Paid access is granted
-    # only after a verified PayPal subscription webhook.
-    with _users_lock:
-        users = _load_json(USERS_FILE, {})
-        if email not in users:
-            users[email] = {"plan": "default", "registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "verified": True}
-        else:
-            users[email]["verified"] = True
-        _save_json(USERS_FILE, users)
-    return jsonify({"status": "success", "email": email, "plan": _effective_plan_for_email(email, plan)}), 200
-
+# Account creation is intentionally handled only by /verify-code after
+# successful email verification. The old public /register endpoint was a
+# verification bypass and has been removed.
 
 @app.route("/send-verification-code", methods=["POST"])
 def send_verification_code():
@@ -1923,9 +1907,17 @@ def get_account():
         return jsonify({"error": "Email required"}), 400
 
     users = _load_json(USERS_FILE, {})
-    account = dict(users.get(email, {"plan": "default", "registered_at": None}))
-    account["plan"] = _effective_plan_for_email(email, account.get("plan", "default"))
-    return jsonify({"email": email, **account}), 200
+    stored = users.get(email, {})
+    effective_plan = _effective_plan_for_email(email, stored.get("plan", "default"))
+    # This endpoint is called from public frontend pages, so expose only the
+    # minimum fields the UI needs. Never leak PayPal subscription IDs, consent
+    # records, or other account metadata to anyone who knows an email address.
+    return jsonify({
+        "email": email,
+        "plan": effective_plan,
+        "registered_at": stored.get("registered_at"),
+        "verified": bool(stored.get("verified", False)),
+    }), 200
 
 
 @app.route("/history", methods=["GET"])

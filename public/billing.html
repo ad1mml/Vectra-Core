@@ -284,9 +284,31 @@ function renderPaypal(planId){
         return;
       }
 
+      // One final backend read closes the handoff race: only redirect once
+      // /account agrees that the active subscription resolves to the same tier.
+      let accountConfirmed = false;
+      try {
+        const accountRes = await fetch(API_BASE_URL + '/account?email=' + encodeURIComponent(email), {
+          cache: 'no-store'
+        });
+        const accountData = await accountRes.json().catch(() => ({}));
+        accountConfirmed = accountRes.ok && accountData.plan === selected;
+      } catch (err) {
+        console.error('[VectraCore] final account verification failed:', err);
+      }
+
+      if (!accountConfirmed) {
+        box.innerHTML = '<div class="loading">Payment was confirmed, but your VectraCore account is still syncing.<br><small>Please refresh in a moment.</small></div>';
+        console.error('[VectraCore] confirmed PayPal tier did not match /account:', { email, selected });
+        return;
+      }
+
       localStorage.setItem('vectracore_plan', selected);
       localStorage.setItem('vectracore_selected_plan', selected);
-      window.location.href='index.html?subscription=success&plan='+encodeURIComponent(selected)+'&subscription_id='+encodeURIComponent(subscriptionID);
+      // The PayPal confirmation endpoint has already verified the real tier.
+      // Go straight to the trading workspace so index.html cannot replace the
+      // confirmed tier with its landing-page/default state during the handoff.
+      window.location.replace('work.html?subscription=success&plan='+encodeURIComponent(selected)+'&subscription_id='+encodeURIComponent(subscriptionID));
     },
     onError:(err)=>{
       console.error('PayPal checkout error:', err);
