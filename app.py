@@ -41,6 +41,7 @@ import logging
 import secrets
 import hashlib
 import uuid
+import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from prompts.followup_prompt import FOLLOWUP_PROMPT as FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
@@ -1599,13 +1600,28 @@ def paypal_webhook():
     event = request.get_json(silent=True)
     if not isinstance(event, dict):
         return jsonify({"error": "Invalid webhook payload."}), 400
-    try:
-        if not _verify_paypal_webhook(request.headers, event):
-            return jsonify({"error": "Invalid PayPal webhook signature."}), 400
-        return jsonify({"status": "ok", **_handle_paypal_webhook(event)}), 200
-    except Exception:
-        app.logger.exception("PayPal webhook processing failed")
-        return jsonify({"error": "Webhook processing failed."}), 500
+
+    headers_copy = dict(request.headers)
+
+    def _process_async():
+        try:
+            if not _verify_paypal_webhook(headers_copy, event):
+                app.logger.error("PayPal webhook signature verification failed.")
+                return
+            _handle_paypal_webhook(event)
+        except Exception:
+            app.logger.exception("PayPal webhook async processing failed")
+
+    threading.Thread(target=_process_async, daemon=True).start()
+
+    # Ack immediately — PayPal's timeout window is short, and our own
+    # verification call (round trip back to PayPal for an OAuth token,
+    # then the verify-signature call) is too slow to finish in time on
+    # PythonAnywhere's outbound connection, which was causing every
+    # delivery to be marked FAIL_SOFT_ERROR even though the event was
+    # valid. The actual state change still only happens after signature
+    # verification succeeds in the background thread above.
+    return jsonify({"status": "received"}), 200
 
 
 @app.route("/admin/grant-access", methods=["POST"])
