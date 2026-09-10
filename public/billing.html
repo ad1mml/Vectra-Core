@@ -235,47 +235,75 @@ function renderPaypal(planId){
     },
 
     onApprove:async(data)=>{
-      localStorage.setItem('vectracore_subscription_id',data.subscriptionID || data.subscription_id);
+      const subscriptionID = data.subscriptionID || data.subscription_id;
+      if (!subscriptionID) {
+        throw new Error('PayPal did not return a subscription ID.');
+      }
+
+      localStorage.setItem('vectracore_subscription_id',subscriptionID);
       localStorage.setItem('vectracore_billing_cycle','monthly');
 
       const email = emailInput.value.trim().toLowerCase();
       const box = document.getElementById('paypal-button-container');
       box.innerHTML = '<div class="loading">Activating your '+PLANS[selected].name+' access…</div>';
 
-      // PayPal confirms the charge instantly, but the backend only
-      // promotes the account once BILLING.SUBSCRIPTION.ACTIVATED lands on
-      // /paypal/webhook — which can take a few seconds. /account is the
-      // same source of truth work.html and index.html rely on, so we poll
-      // it here rather than trusting the local "selected" plan, to avoid
-      // landing the user on the terminal before the backend has actually
-      // activated the plan.
+      // Do not wait for the asynchronous webhook. Ask our backend to retrieve
+      // the subscription directly from PayPal and activate the account only
+      // after PayPal proves the subscription ID + plan ID + account identity.
       const deadline = Date.now() + 30000;
       let confirmedPlan = null;
+      let lastStatus = 'APPROVAL_PENDING';
+
       while (Date.now() < deadline) {
         try {
-          const res = await fetch(API_BASE_URL + '/account?email=' + encodeURIComponent(email));
-          if (res.ok) {
-            const account = await res.json();
-            if (account.plan === selected) { confirmedPlan = account.plan; break; }
+          const res = await fetch(API_BASE_URL + '/paypal/confirm-subscription', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+              email,
+              subscription_id: subscriptionID,
+              plan: selected
+            })
+          });
+          const result = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(result.error || 'Could not confirm the PayPal subscription.');
+
+          lastStatus = result.status || lastStatus;
+          if (result.confirmed === true && result.plan === selected) {
+            confirmedPlan = result.plan;
+            break;
           }
         } catch (err) {
-          console.error('[VectraCore] /account poll failed:', err);
+          console.error('[VectraCore] PayPal activation check failed:', err);
         }
         await new Promise(r => setTimeout(r, 1500));
       }
 
-      // Pre-warm both localStorage keys the rest of the site reads:
-      // work.html's terminal badge/API calls key off vectracore_plan, and
-      // index.html's signup/registration prefill keys off
-      // vectracore_selected_plan. Each page still re-checks /account itself
-      // as the authoritative source, but seeding both avoids a flash of
-      // the wrong plan on first paint.
+      // Confirm once more from /account. This endpoint reads the server-side
+      // account record, never the browser's selected plan.
+      if (confirmedPlan) {
+        try {
+          const accountRes = await fetch(API_BASE_URL + '/account?email=' + encodeURIComponent(email));
+          if (accountRes.ok) {
+            const account = await accountRes.json();
+            if (account.plan === selected && account.subscription_status === 'ACTIVE') {
+              confirmedPlan = account.plan;
+            } else {
+              confirmedPlan = null;
+            }
+          }
+        } catch (err) {
+          console.error('[VectraCore] Final account verification failed:', err);
+          confirmedPlan = null;
+        }
+      }
+
       const planToStore = confirmedPlan || selected;
       localStorage.setItem('vectracore_plan', planToStore);
       localStorage.setItem('vectracore_selected_plan', planToStore);
 
       const status = confirmedPlan ? 'success' : 'pending';
-      window.location.href='index.html?subscription='+status+'&plan='+encodeURIComponent(selected);
+      window.location.href='index.html?subscription='+status+'&plan='+encodeURIComponent(selected)+'&subscription_id='+encodeURIComponent(subscriptionID);
     },
 
     onError:(err)=>{
