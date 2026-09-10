@@ -1236,7 +1236,7 @@
         // we just email them a code.
         emailForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const emailInput = emailField.value.trim();
+            const emailInput = emailField.value.trim().toLowerCase();
             if (!emailInput) return;
 
             if (!policyCheckbox.checked) {

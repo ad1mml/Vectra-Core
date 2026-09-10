@@ -1122,7 +1122,7 @@
             ? window.location.origin
             : 'http://127.0.0.1:5000';
 
-        const activeProfile = localStorage.getItem('vectracore_user_email') || 'guest@vectracore.ai';
+        const activeProfile = (localStorage.getItem('vectracore_user_email') || 'guest@vectracore.ai').toLowerCase();
         let currentPlan = localStorage.getItem('vectracore_plan') || 'default';
         let sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
         let currentSessionId = null;

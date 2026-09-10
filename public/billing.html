@@ -141,7 +141,7 @@ function renderDetails(){ const plan=PLANS[selected]; summary.className='summary
 let paypalRenderedId=null;
 const emailInput = document.getElementById('billingEmail');
 const emailError = document.getElementById('emailError');
-const storedEmail = localStorage.getItem('vectracore_user_email') || localStorage.getItem('vectracore_email') || params.get('email') || '';
+const storedEmail = (localStorage.getItem('vectracore_user_email') || localStorage.getItem('vectracore_email') || params.get('email') || '').toLowerCase();
 if (storedEmail) emailInput.value = storedEmail;
 
 const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
