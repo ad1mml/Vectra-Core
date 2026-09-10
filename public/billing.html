@@ -126,12 +126,22 @@ const PLANS = {
   }
 };
 const params=new URLSearchParams(location.search); let selected=params.get('plan'); if(!PLANS[selected]) selected='pro';
+
+// Checkout requires a verified VectraCore account — anyone landing here
+// without one (direct link, bookmark, back button, etc.) gets sent to the
+// signup/verification flow first and brought straight back to checkout
+// once they've verified their email.
+const isVerified = Boolean(localStorage.getItem('vectracore_user_email'));
+if (!isVerified) {
+  location.replace(`index.html?plan=${encodeURIComponent(selected)}&next=billing`);
+}
+
 const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), trialEl=document.getElementById('trial'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
 function renderDetails(){ const plan=PLANS[selected]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=plan.price+' <small>'+plan.period+'</small>'; trialEl.textContent=plan.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent='Subscribe to '+plan.name+' monthly through PayPal.'; ensurePaypalReady().then(()=>renderPaypal(plan.id)); }
 let paypalRenderedId=null;
 const emailInput = document.getElementById('billingEmail');
 const emailError = document.getElementById('emailError');
-const storedEmail = localStorage.getItem('vectracore_email') || params.get('email') || '';
+const storedEmail = localStorage.getItem('vectracore_user_email') || localStorage.getItem('vectracore_email') || params.get('email') || '';
 if (storedEmail) emailInput.value = storedEmail;
 
 const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
@@ -240,7 +250,9 @@ function renderPaypal(planId){
 
   paypalRenderedId=planId;
 }
-renderDetails();
+if (isVerified) {
+  renderDetails();
+}
 </script>
 </body>
 </html>

@@ -1190,13 +1190,18 @@
         // If the user arrived from the pricing page (index.html?plan=pro),
         // remember their choice and open the signup modal right away —
         // unless they're already a verified user, in which case just take
-        // them straight in.
+        // them straight in. A "next=billing" param (used when billing.html
+        // bounces an unverified visitor back here) sends them on to
+        // checkout afterward instead of the terminal.
         const urlParams = new URLSearchParams(window.location.search);
         const planFromUrl = urlParams.get('plan');
+        const nextFromUrl = urlParams.get('next');
         if (planFromUrl && ['default', 'pro', 'vip'].includes(planFromUrl)) {
             selectedPlan = planFromUrl;
             localStorage.setItem('vectracore_selected_plan', selectedPlan);
-            redirectTarget = 'work.html';
+            redirectTarget = nextFromUrl === 'billing'
+                ? `billing.html?plan=${encodeURIComponent(selectedPlan)}`
+                : 'work.html';
             if (isAlreadyRegistered()) {
                 window.location.href = redirectTarget;
             } else {
