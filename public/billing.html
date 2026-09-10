@@ -236,76 +236,58 @@ function renderPaypal(planId){
 
     onApprove:async(data)=>{
       const subscriptionID = data.subscriptionID || data.subscription_id;
-      if (!subscriptionID) {
-        throw new Error('PayPal did not return a subscription ID.');
-      }
-
-      localStorage.setItem('vectracore_subscription_id',subscriptionID);
+      localStorage.setItem('vectracore_subscription_id', subscriptionID || '');
       localStorage.setItem('vectracore_billing_cycle','monthly');
 
       const email = emailInput.value.trim().toLowerCase();
       const box = document.getElementById('paypal-button-container');
-      box.innerHTML = '<div class="loading">Activating your '+PLANS[selected].name+' access…</div>';
+      box.innerHTML = '<div class="loading">Verifying your '+PLANS[selected].name+' subscription…</div>';
 
-      // Do not wait for the asynchronous webhook. Ask our backend to retrieve
-      // the subscription directly from PayPal and activate the account only
-      // after PayPal proves the subscription ID + plan ID + account identity.
+      if (!subscriptionID) {
+        box.innerHTML = '<div class="loading">PayPal did not return a subscription ID. Please try again.</div>';
+        return;
+      }
+
+      // Verify directly with PayPal through the backend. This avoids relying
+      // only on the asynchronous webhook to activate the account.
       const deadline = Date.now() + 30000;
-      let confirmedPlan = null;
-      let lastStatus = 'APPROVAL_PENDING';
+      let confirmed = false;
+      let lastMessage = 'Waiting for PayPal to activate the subscription…';
 
       while (Date.now() < deadline) {
         try {
           const res = await fetch(API_BASE_URL + '/paypal/confirm-subscription', {
             method: 'POST',
-            headers: {'Content-Type':'application/json'},
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-              email,
+              email: email,
               subscription_id: subscriptionID,
               plan: selected
             })
           });
           const result = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(result.error || 'Could not confirm the PayPal subscription.');
-
-          lastStatus = result.status || lastStatus;
           if (result.confirmed === true && result.plan === selected) {
-            confirmedPlan = result.plan;
+            confirmed = true;
             break;
           }
+          if (result.error) lastMessage = result.error;
         } catch (err) {
-          console.error('[VectraCore] PayPal activation check failed:', err);
+          console.error('[VectraCore] subscription confirmation failed:', err);
+          lastMessage = 'Could not reach the VectraCore payment verification service.';
         }
         await new Promise(r => setTimeout(r, 1500));
       }
 
-      // Confirm once more from /account. This endpoint reads the server-side
-      // account record, never the browser's selected plan.
-      if (confirmedPlan) {
-        try {
-          const accountRes = await fetch(API_BASE_URL + '/account?email=' + encodeURIComponent(email));
-          if (accountRes.ok) {
-            const account = await accountRes.json();
-            if (account.plan === selected && account.subscription_status === 'ACTIVE') {
-              confirmedPlan = account.plan;
-            } else {
-              confirmedPlan = null;
-            }
-          }
-        } catch (err) {
-          console.error('[VectraCore] Final account verification failed:', err);
-          confirmedPlan = null;
-        }
+      if (!confirmed) {
+        box.innerHTML = '<div class="loading">Subscription was not activated yet.<br><small>'+lastMessage+'</small><br>Please wait a moment and refresh, or contact support if this continues.</div>';
+        console.error('[VectraCore] PayPal subscription was not confirmed:', {email, subscriptionID, selected, lastMessage});
+        return;
       }
 
-      const planToStore = confirmedPlan || selected;
-      localStorage.setItem('vectracore_plan', planToStore);
-      localStorage.setItem('vectracore_selected_plan', planToStore);
-
-      const status = confirmedPlan ? 'success' : 'pending';
-      window.location.href='index.html?subscription='+status+'&plan='+encodeURIComponent(selected)+'&subscription_id='+encodeURIComponent(subscriptionID);
+      localStorage.setItem('vectracore_plan', selected);
+      localStorage.setItem('vectracore_selected_plan', selected);
+      window.location.href='index.html?subscription=success&plan='+encodeURIComponent(selected)+'&subscription_id='+encodeURIComponent(subscriptionID);
     },
-
     onError:(err)=>{
       console.error('PayPal checkout error:', err);
       const message = (err && err.message) ? err.message : 'PayPal could not complete the checkout. Please try again.';

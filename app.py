@@ -1,4 +1,3 @@
-from urllib.parse import quote
 """
 VectraCore backend — single source of truth for the API.
 
@@ -1628,111 +1627,56 @@ def create_paypal_subscription():
     }), 200
 
 
+
 @app.route("/paypal/confirm-subscription", methods=["POST"])
 @app.route("/confirm-subscription", methods=["POST"])
 def confirm_paypal_subscription():
-    """Synchronously confirm a PayPal subscription after checkout approval.
-
-    The webhook remains the authoritative asynchronous backup, but the browser
-    should not have to wait for that webhook before the account becomes usable.
-    We query PayPal directly, verify the subscription belongs to the requested
-    VectraCore account and that its plan_id is one of our configured plans, then
-    persist the verified ACTIVE state.
-    """
-    if not PAYPAL_CLIENT_SECRET:
-        return jsonify({"error": "PayPal payments are not configured on the server."}), 503
-
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     subscription_id = (data.get("subscription_id") or data.get("subscriptionID") or "").strip()
-    requested_plan = data.get("plan") or data.get("plan_key") or ""
-    requested_plan_key = _paypal_plan_key(requested_plan)
-    expected_plan_id = PAYPAL_PLAN_IDS.get(requested_plan_key)
+    requested_plan = (data.get("plan") or "").strip().lower()
+    plan_key = _paypal_plan_key(requested_plan)
+    expected_plan_id = PAYPAL_PLAN_IDS.get(plan_key)
 
-    if not email or not _valid_email(email):
-        return jsonify({"error": "A valid email is required."}), 400
-    if not subscription_id:
-        return jsonify({"error": "PayPal subscription ID is required."}), 400
-    if not expected_plan_id:
-        return jsonify({"error": "Invalid plan."}), 400
+    if not email or not subscription_id or not expected_plan_id:
+        return jsonify({"confirmed": False, "error": "Email, subscription ID, and a valid plan are required."}), 400
 
-    with _users_lock:
-        users = _load_json(USERS_FILE, {})
-        account = users.get(email)
-    if not account or not account.get("verified"):
-        return jsonify({"error": "Verify your VectraCore account before confirming a subscription."}), 403
+    users = _load_json(USERS_FILE, {})
+    account = users.get(email)
+    if not account:
+        return jsonify({"confirmed": False, "error": "VectraCore account not found."}), 404
 
     stored_subscription_id = (account.get("paypal_subscription_id") or "").strip()
     if not stored_subscription_id or stored_subscription_id != subscription_id:
-        return jsonify({"error": "This PayPal subscription is not the one linked to this account."}), 403
+        return jsonify({"confirmed": False, "error": "This PayPal subscription is not linked to this account."}), 403
 
     try:
         r = _paypal_request("GET", f"/v1/billing/subscriptions/{subscription_id}")
         payload = r.json() if r.content else {}
-    except Exception:
-        app.logger.exception("PayPal subscription lookup failed")
-        return jsonify({"error": "Could not verify the subscription with PayPal."}), 502
+    except Exception as exc:
+        app.logger.exception("PayPal subscription confirmation failed")
+        return jsonify({"confirmed": False, "error": "Could not verify the PayPal subscription.", "details": str(exc)[:200]}), 502
 
     if r.status_code >= 300:
-        app.logger.error("PayPal subscription lookup failed: %s %s", r.status_code, r.text[:1000])
-        return jsonify({"error": "PayPal could not verify the subscription."}), 502
+        return jsonify({"confirmed": False, "error": "PayPal could not verify this subscription.", "paypal": payload}), 502
 
-    paypal_plan_id = payload.get("plan_id")
+    paypal_plan_id = (payload.get("plan_id") or "").strip()
     paypal_status = (payload.get("status") or "").upper()
-    subscriber_email = ((payload.get("subscriber") or {}).get("email_address") or "").strip().lower()
+    subscriber = payload.get("subscriber") or {}
+    subscriber_email = (subscriber.get("email_address") or "").strip().lower()
     paypal_custom_id = (payload.get("custom_id") or "").strip().lower()
 
-    # Never activate an account merely because the browser claimed it bought VIP.
-    # PayPal must prove the subscription ID, plan ID, and account identity.
     if paypal_plan_id != expected_plan_id:
-        app.logger.error(
-            "PayPal plan mismatch | email=%s | subscription=%s | expected=%s | actual=%s",
-            email, subscription_id, expected_plan_id, paypal_plan_id,
-        )
-        return jsonify({"error": "The PayPal subscription does not match the selected plan."}), 409
-
+        return jsonify({"confirmed": False, "error": "The PayPal subscription plan does not match the selected VectraCore plan."}), 409
     if subscriber_email and subscriber_email != email and paypal_custom_id != email:
-        app.logger.error(
-            "PayPal account mismatch | email=%s | subscription=%s | paypal_email=%s | custom_id=%s",
-            email, subscription_id, subscriber_email, paypal_custom_id,
-        )
-        return jsonify({"error": "The PayPal subscription does not belong to this VectraCore account."}), 403
+        return jsonify({"confirmed": False, "error": "The PayPal account does not match the VectraCore account."}), 403
 
     tier = PAYPAL_PLAN_TO_TIER.get(paypal_plan_id)
-    if not tier:
-        return jsonify({"error": "Unknown PayPal plan."}), 409
+    if paypal_status == "ACTIVE" and tier:
+        account = _set_subscription_state(email, "ACTIVE", subscription_id, paypal_plan_id, "CLIENT.CONFIRMED")
+        return jsonify({"confirmed": True, "plan": tier, "status": "ACTIVE"}), 200
 
-    if paypal_status == "ACTIVE":
-        _set_subscription_state(email, "ACTIVE", subscription_id, paypal_plan_id, "CLIENT.CONFIRMED")
-        return jsonify({
-            "success": True,
-            "confirmed": True,
-            "status": "ACTIVE",
-            "plan": tier,
-            "plan_id": paypal_plan_id,
-            "subscription_id": subscription_id,
-        }), 200
-
-    # Approval can briefly precede activation. The frontend can safely poll this
-    # endpoint until PayPal reports ACTIVE; no paid access is granted yet.
-    return jsonify({
-        "success": True,
-        "confirmed": False,
-        "status": paypal_status or "UNKNOWN",
-        "plan": tier,
-        "plan_id": paypal_plan_id,
-        "subscription_id": subscription_id,
-    }), 200
-
-
-@app.route("/payment-success", methods=["GET"])
-def payment_success():
-    """Safe PayPal return target; activation is still verified server-side."""
-    subscription_id = (request.args.get("subscription_id") or request.args.get("ba_token") or "").strip()
-    if subscription_id:
-        return redirect(f"/index.html?subscription=pending&subscription_id={quote(subscription_id)}")
-    return redirect("/index.html?subscription=pending")
-
+    return jsonify({"confirmed": False, "plan": tier, "status": paypal_status or "UNKNOWN"}), 200
 
 @app.route("/paypal/webhook", methods=["POST"])
 @app.route("/webhooks/paypal", methods=["POST"])
