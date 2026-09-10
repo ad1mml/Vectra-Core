@@ -176,6 +176,8 @@ FROM_NAME = os.environ.get("FROM_NAME", "VectraCore")
 # PayPal Subscriptions. The client secret is server-only and must be supplied
 # through PAYPAL_CLIENT_SECRET; never expose it to the browser.
 PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "live").strip().lower()
+if PAYPAL_MODE not in {"live", "sandbox"}:
+    raise RuntimeError("PAYPAL_MODE must be either 'live' or 'sandbox'.")
 # NOTE: these must be rotated in the PayPal developer dashboard — the old
 # values were committed to source as hardcoded fallbacks and must be
 # treated as compromised. No default is provided anymore; set these in
@@ -646,17 +648,35 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
 def _paypal_access_token():
     if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
         raise RuntimeError("PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.")
-    r = requests.post(
-        f"{PAYPAL_API_BASE}/v1/oauth2/token",
-        auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
-        headers={"Accept": "application/json", "Accept-Language": "en_US"},
-        data={"grant_type": "client_credentials"}, timeout=15,
-    )
+    try:
+        r = requests.post(
+            f"{PAYPAL_API_BASE}/v1/oauth2/token",
+            auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
+            headers={"Accept": "application/json", "Accept-Language": "en_US"},
+            data={"grant_type": "client_credentials"}, timeout=15,
+        )
+    except requests.RequestException as exc:
+        app.logger.error("PayPal OAuth network error (%s): %s", PAYPAL_MODE, exc)
+        raise RuntimeError("Could not connect to PayPal.") from exc
+
+    try:
+        payload = r.json() if r.content else {}
+    except ValueError:
+        payload = {}
+
     if r.status_code >= 300:
-        app.logger.error("PayPal OAuth failed: %s %s", r.status_code, r.text[:500])
+        # Never log the client secret or Authorization header. PayPal normally
+        # supplies a useful error name/debug_id that is safe to log.
+        app.logger.error(
+            "PayPal OAuth failed (%s): HTTP %s name=%s debug_id=%s message=%s",
+            PAYPAL_MODE, r.status_code, payload.get("name"),
+            payload.get("debug_id"), payload.get("message") or r.text[:300],
+        )
         raise RuntimeError("PayPal authentication failed.")
-    token = r.json().get("access_token")
+
+    token = payload.get("access_token")
     if not token:
+        app.logger.error("PayPal OAuth returned HTTP %s without an access token.", r.status_code)
         raise RuntimeError("PayPal did not return an access token.")
     return token
 
@@ -730,12 +750,51 @@ def _verify_paypal_webhook(headers, event):
         "auth_algo": headers.get("PAYPAL-AUTH-ALGO"),
         "transmission_sig": headers.get("PAYPAL-TRANSMISSION-SIG"),
     }
-    if not PAYPAL_WEBHOOK_ID or not all(required.values()):
+    missing = [key for key, value in required.items() if not value]
+    if not PAYPAL_WEBHOOK_ID:
+        app.logger.error("PayPal webhook verification unavailable: PAYPAL_WEBHOOK_ID is missing.")
         return False
-    r = _paypal_request("POST", "/v1/notifications/verify-webhook-signature", {
-        **required, "webhook_id": PAYPAL_WEBHOOK_ID, "webhook_event": event,
-    })
-    return r.status_code < 300 and r.json().get("verification_status") == "SUCCESS"
+    if missing:
+        app.logger.error("PayPal webhook verification unavailable: missing headers %s", ", ".join(missing))
+        return False
+
+    try:
+        r = _paypal_request("POST", "/v1/notifications/verify-webhook-signature", {
+            **required, "webhook_id": PAYPAL_WEBHOOK_ID, "webhook_event": event,
+        })
+    except Exception:
+        app.logger.exception("PayPal webhook verification request failed (mode=%s).", PAYPAL_MODE)
+        return False
+
+    try:
+        payload = r.json() if r.content else {}
+    except ValueError:
+        payload = {}
+    verified = r.status_code < 300 and payload.get("verification_status") == "SUCCESS"
+    if not verified:
+        app.logger.error(
+            "PayPal webhook verification rejected: HTTP %s status=%s name=%s debug_id=%s message=%s event_id=%s event_type=%s",
+            r.status_code, payload.get("verification_status"), payload.get("name"),
+            payload.get("debug_id"), payload.get("message") or r.text[:300],
+            event.get("id"), event.get("event_type"),
+        )
+    return verified
+
+
+PAYPAL_EVENTS_FILE = os.path.join(DATA_DIR, "paypal_events.json")
+_paypal_events_lock = threading.Lock()
+
+def _claim_paypal_event(event_id):
+    """Atomically mark a PayPal event as processed/claimed to prevent duplicates."""
+    if not event_id:
+        return True
+    with _paypal_events_lock:
+        events = _load_json(PAYPAL_EVENTS_FILE, {})
+        if event_id in events:
+            return False
+        events[event_id] = {"status": "processed", "received_at": datetime.utcnow().isoformat()}
+        _save_json(PAYPAL_EVENTS_FILE, events)
+        return True
 
 
 def _handle_paypal_webhook(event):
@@ -1691,31 +1750,39 @@ def confirm_paypal_subscription():
 def paypal_webhook():
     if not PAYPAL_CLIENT_SECRET or not PAYPAL_WEBHOOK_ID:
         return jsonify({"error": "PayPal webhook verification is not configured."}), 503
+
     event = request.get_json(silent=True)
     if not isinstance(event, dict):
         return jsonify({"error": "Invalid webhook payload."}), 400
 
-    headers_copy = dict(request.headers)
+    event_id = (event.get("id") or "").strip()
+    if not event_id:
+        return jsonify({"error": "PayPal webhook event ID is missing."}), 400
 
-    def _process_async():
-        try:
-            if not _verify_paypal_webhook(headers_copy, event):
-                app.logger.error("PayPal webhook signature verification failed.")
-                return
-            _handle_paypal_webhook(event)
-        except Exception:
-            app.logger.exception("PayPal webhook async processing failed")
+    # Verify before acknowledging. A non-2xx response lets PayPal retry a
+    # transient failure instead of losing a billing state change.
+    if not _verify_paypal_webhook(dict(request.headers), event):
+        return jsonify({"error": "Webhook verification failed."}), 400
 
-    threading.Thread(target=_process_async, daemon=True).start()
+    if not _claim_paypal_event(event_id):
+        return jsonify({"status": "already_processed"}), 200
 
-    # Ack immediately — PayPal's timeout window is short, and our own
-    # verification call (round trip back to PayPal for an OAuth token,
-    # then the verify-signature call) is too slow to finish in time on
-    # PythonAnywhere's outbound connection, which was causing every
-    # delivery to be marked FAIL_SOFT_ERROR even though the event was
-    # valid. The actual state change still only happens after signature
-    # verification succeeds in the background thread above.
-    return jsonify({"status": "received"}), 200
+    try:
+        result = _handle_paypal_webhook(event)
+        app.logger.info(
+            "PayPal webhook processed: event_id=%s event_type=%s handled=%s access_changed=%s",
+            event_id, event.get("event_type"), result.get("handled"), result.get("access_changed"),
+        )
+        return jsonify({"status": "processed"}), 200
+    except Exception:
+        app.logger.exception("PayPal webhook processing failed: event_id=%s event_type=%s", event_id, event.get("event_type"))
+        # The event was claimed before processing. Remove the claim so a retry
+        # can safely process it after a transient application failure.
+        with _paypal_events_lock:
+            events = _load_json(PAYPAL_EVENTS_FILE, {})
+            events.pop(event_id, None)
+            _save_json(PAYPAL_EVENTS_FILE, events)
+        return jsonify({"error": "Webhook processing failed."}), 500
 
 
 @app.route("/admin/grant-access", methods=["POST"])
@@ -1764,10 +1831,6 @@ def admin_grant_access():
 
     return jsonify({"status": "success", "email": email, "plan": plan, "comped": account["comped"]}), 200
 
-
-# Account creation is intentionally handled only by /verify-code after
-# successful email verification. The old public /register endpoint was a
-# verification bypass and has been removed.
 
 @app.route("/send-verification-code", methods=["POST"])
 def send_verification_code():
@@ -1907,16 +1970,14 @@ def get_account():
         return jsonify({"error": "Email required"}), 400
 
     users = _load_json(USERS_FILE, {})
-    stored = users.get(email, {})
-    effective_plan = _effective_plan_for_email(email, stored.get("plan", "default"))
-    # This endpoint is called from public frontend pages, so expose only the
-    # minimum fields the UI needs. Never leak PayPal subscription IDs, consent
-    # records, or other account metadata to anyone who knows an email address.
+    account = users.get(email, {})
+    effective_plan = _effective_plan_for_email(email, account.get("plan", "default"))
     return jsonify({
         "email": email,
         "plan": effective_plan,
-        "registered_at": stored.get("registered_at"),
-        "verified": bool(stored.get("verified", False)),
+        "registered_at": account.get("registered_at"),
+        "verified": bool(account.get("verified")),
+        "subscription_status": account.get("subscription_status"),
     }), 200
 
 
