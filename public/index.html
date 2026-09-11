@@ -1154,7 +1154,7 @@
         const resendBtn = document.getElementById('resend-code-btn');
         const changeEmailBtn = document.getElementById('change-email-btn');
 
-        let redirectTarget = 'work.html';
+        let redirectTarget = '/terminal/';
         let selectedPlan = localStorage.getItem('vectracore_selected_plan') || 'default';
         let pendingEmail = '';
         let resendCooldownInterval = null;
@@ -1282,7 +1282,7 @@
         // the user here with ?reauth=1 so the sign-in modal opens right
         // away, letting them verify a different email or use Google.
         if (reauthFromUrl === '1') {
-            redirectTarget = 'work.html';
+            redirectTarget = '/terminal/';
             resetModal();
             modal.style.display = 'flex';
         }
@@ -1291,8 +1291,8 @@
             selectedPlan = planFromUrl;
             localStorage.setItem('vectracore_selected_plan', selectedPlan);
             redirectTarget = nextFromUrl === 'billing'
-                ? `billing.html?plan=${encodeURIComponent(selectedPlan)}`
-                : 'work.html';
+                ? `/billing/?plan=${encodeURIComponent(selectedPlan)}`
+                : '/terminal/';
             if (isAlreadyRegistered()) {
                 window.location.href = redirectTarget;
             } else {
@@ -1303,7 +1303,7 @@
 
         document.querySelectorAll('.trigger-popup-work').forEach(button => {
             button.addEventListener('click', () => {
-                redirectTarget = 'work.html';
+                redirectTarget = '/terminal/';
                 if (isAlreadyRegistered()) {
                     window.location.href = redirectTarget;
                     return;

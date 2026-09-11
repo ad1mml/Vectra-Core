@@ -139,7 +139,7 @@ const params=new URLSearchParams(location.search); let selected=params.get('plan
 // once they've verified their email.
 const isVerified = Boolean(localStorage.getItem('vectracore_user_email'));
 if (!isVerified) {
-  location.replace(`index.html?plan=${encodeURIComponent(selected)}&next=billing`);
+  location.replace(`/home/?plan=${encodeURIComponent(selected)}&next=billing`);
 }
 
 const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), trialEl=document.getElementById('trial'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
