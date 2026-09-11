@@ -1105,7 +1105,7 @@
     <header>
         <div class="header-left">
             <button class="mobile-menu-btn" id="mobile-sidebar-toggle" aria-label="Toggle recents menu">&#9776;</button>
-            <a class="logo" href="index.html">
+            <a class="logo" href="/home/">
                 <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <h1>Vectra <span>Core</span></h1>
             </a>
@@ -1115,7 +1115,7 @@
             <div id="navbar-plan-badge" class="navbar-plan-badge plan-default"><span class="badge-label">✨ DEFAULT</span></div>
             <div id="credits-badge" class="user-badge" style="display:none;" title=""></div>
 
-            <a href="pricing.html" class="upgrade-btn"><span class="upgrade-btn-full">⬆ Upgrade Plan</span><span class="upgrade-btn-short">⬆ Upgrade</span></a>
+            <a href="/pricing/" class="upgrade-btn"><span class="upgrade-btn-full">⬆ Upgrade Plan</span><span class="upgrade-btn-short">⬆ Upgrade</span></a>
 
             <div class="profile-menu" id="profile-menu">
                 <button type="button" class="profile-btn" id="profile-btn" aria-label="Account menu" aria-haspopup="true" aria-expanded="false">
@@ -1243,7 +1243,7 @@
                 // browser is still signed in, then open its sign-in modal
                 // (email + code, or Google) straight away.
                 localStorage.removeItem('vectracore_user_email');
-                window.location.href = 'index.html?reauth=1';
+                window.location.href = '/home/?reauth=1';
             });
         })();
 
@@ -1532,7 +1532,7 @@
                         </div>
                     ` : ''}
                     <div class="upgrade-plan-line">Upgrade to Pro/VIP to unlock more chart analyses.</div>
-                    <a class="upgrade-cta-btn" href="pricing.html">&#11014; Upgrade Plan</a>
+                    <a class="upgrade-cta-btn" href="/pricing/">&#11014; Upgrade Plan</a>
                 </div>
             `;
             document.getElementById('upgrade-msg').textContent =
@@ -1664,13 +1664,13 @@
 
         async function loadSessions() {
             if (!sessionsEnabled) {
-                recentsBody.innerHTML = `<p class="recents-locked">Chat history &amp; recents are a <a href="pricing.html">Pro / VIP</a> feature.</p>`;
+                recentsBody.innerHTML = `<p class="recents-locked">Chat history &amp; recents are a <a href="/pricing/">Pro / VIP</a> feature.</p>`;
                 return;
             }
             try {
                 const response = await fetch(`${API_BASE_URL}/sessions?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
                 if (response.status === 403) {
-                    recentsBody.innerHTML = `<p class="recents-locked">Chat history &amp; recents are a <a href="pricing.html">Pro / VIP</a> feature.</p>`;
+                    recentsBody.innerHTML = `<p class="recents-locked">Chat history &amp; recents are a <a href="/pricing/">Pro / VIP</a> feature.</p>`;
                     return;
                 }
                 if (!response.ok) throw new Error('Could not load sessions');

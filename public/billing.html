@@ -6,7 +6,7 @@
     <title>Checkout - VectraCore</title>
     <meta name="description" content="Complete your VectraCore subscription checkout.">
     <meta name="robots" content="noindex, follow">
-    <link rel="canonical" href="https://vectracore.app/billing.html">
+    <link rel="canonical" href="https://vectracore.app/billing/">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
@@ -77,8 +77,8 @@
 </head>
 <body>
 <header>
-    <a class="logo" href="index.html"><svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Vectra<span>Core</span></h1></a>
-    <a class="back" href="pricing.html">← Back to pricing</a>
+    <a class="logo" href="/home/"><svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Vectra<span>Core</span></h1></a>
+    <a class="back" href="/pricing/">← Back to pricing</a>
 </header>
 <main>
     <div class="eyebrow">Secure checkout</div>
@@ -102,7 +102,7 @@
             <div id="emailError" class="email-error">Enter the same verified email you used to create your VectraCore account.</div>
             <div id="paypal-button-container" class="paybox"><div class="loading">Loading secure checkout…</div></div>
             <div class="secure">Payments are processed by PayPal. Your PayPal payment details are handled by PayPal, not stored on this page.</div>
-            <div class="secure">By subscribing, you agree to VectraCore's <a href="terms-of-service.html" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Terms of Service</a> and <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Privacy Policy</a>.</div>
+            <div class="secure">By subscribing, you agree to VectraCore's <a href="/terms-of-service/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Terms of Service</a> and <a href="/privacy-policy/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Privacy Policy</a>.</div>
         </aside>
     </div>
 </main>
@@ -308,7 +308,7 @@ function renderPaypal(planId){
       // The PayPal confirmation endpoint has already verified the real tier.
       // Go straight to the trading workspace so index.html cannot replace the
       // confirmed tier with its landing-page/default state during the handoff.
-      window.location.replace('work.html?subscription=success&plan='+encodeURIComponent(selected)+'&subscription_id='+encodeURIComponent(subscriptionID));
+      window.location.replace('/terminal/?subscription=success&plan='+encodeURIComponent(selected)+'&subscription_id='+encodeURIComponent(subscriptionID));
     },
     onError:(err)=>{
       console.error('PayPal checkout error:', err);
