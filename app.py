@@ -2180,10 +2180,18 @@ def verify_code():
     del pending[email]
     _save_json(PENDING_FILE, pending)
 
+    # Remember every email this browser session has actually proven
+    # ownership of (via code or Google), so /switch-account can later let
+    # the user hop between them without re-verifying — but can't be used
+    # to jump to an arbitrary/unverified email.
+    verified_emails = set(session.get("verified_emails", []))
+    verified_emails.add(email)
+
     session.clear()
     session.permanent = True
     session["user_email"] = email
     session["authenticated_at"] = time.time()
+    session["verified_emails"] = sorted(verified_emails)
 
     return jsonify({"status": "success", "email": email, "plan": account["plan"]}), 200
 
@@ -2242,12 +2250,48 @@ def google_signin():
         del pending[email]
         _save_json(PENDING_FILE, pending)
 
+    # Same verified-emails bookkeeping as the code-verification path above.
+    verified_emails = set(session.get("verified_emails", []))
+    verified_emails.add(email)
+
     session.clear()
     session.permanent = True
     session["user_email"] = email
     session["authenticated_at"] = time.time()
+    session["verified_emails"] = sorted(verified_emails)
 
     return jsonify({"status": "success", "email": email, "plan": account["plan"]}), 200
+
+
+@app.route("/switch-account", methods=["POST"])
+def switch_account():
+    """Lets the frontend's one-click 'known accounts' switcher move the
+    active session to another email — but ONLY an email this same browser
+    session has already verified (via code or Google) at some point. This
+    is the piece that was missing: previously the frontend only updated
+    localStorage, so the server-side session (the actual source of truth
+    for /account, /usage, /sessions, etc.) never changed, and the old
+    account's plan kept being used no matter which email the UI displayed.
+    """
+    data = request.get_json(silent=True) or {}
+    target = (data.get("email") or "").strip().lower()
+    if not target or not _valid_email(target):
+        return jsonify({"error": "A valid email is required."}), 400
+
+    verified_emails = session.get("verified_emails", [])
+    if target not in verified_emails:
+        return jsonify({
+            "error": "This account hasn't been verified in this browser session yet. Please sign in with it first.",
+        }), 403
+
+    session["user_email"] = target
+    session["authenticated_at"] = time.time()
+
+    users = _load_json(USERS_FILE, {})
+    account = users.get(target, {})
+    effective_plan = _effective_plan_for_email(target, account.get("plan", "default"))
+
+    return jsonify({"status": "success", "email": target, "plan": effective_plan}), 200
 
 
 @app.route("/usage", methods=["GET"])

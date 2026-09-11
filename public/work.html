@@ -1296,6 +1296,32 @@
         document.getElementById('feedback-sender-email').value =
             activeProfile === 'guest@vectracore.ai' ? '' : activeProfile;
 
+        // Treat the cached localStorage plan as provisional only. Confirm it
+        // against the server-side session on every load — this is what
+        // actually stops a stale/leftover plan (e.g. VIP from a previously
+        // active account) from being used after switching accounts, page
+        // refreshes, or a subscription change made elsewhere.
+        if (activeProfile !== 'guest@vectracore.ai') {
+            fetch(`${API_BASE_URL}/account`, { credentials: 'include' })
+                .then((res) => (res.ok ? res.json() : null))
+                .then((data) => {
+                    if (!data || !data.plan) return;
+                    if (data.email && data.email !== activeProfile) {
+                        // Server session belongs to a different email than the
+                        // UI is showing — the two are out of sync (e.g. the
+                        // switch-account call didn't happen). Trust the server.
+                        localStorage.setItem('vectracore_user_email', data.email);
+                    }
+                    if (data.plan !== currentPlan) {
+                        currentPlan = data.plan;
+                        sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
+                        localStorage.setItem('vectracore_plan', currentPlan);
+                        localStorage.setItem('vectracore_selected_plan', currentPlan);
+                    }
+                })
+                .catch(() => { /* best-effort; keep using the cached plan */ });
+        }
+
         // --- Known accounts: every email this browser has successfully
         // verified (via code or Google) gets remembered here by index.html.
         // Lets "Change account" offer one-click switching instead of
@@ -1336,11 +1362,35 @@
                     item.type = 'button';
                     item.className = 'known-account-item';
                     item.innerHTML = `<span class="known-account-avatar">${email.charAt(0)}</span><span>${email}</span>`;
-                    item.addEventListener('click', () => {
-                        // Already verified on this browser before — just
-                        // switch the active profile, no re-verification.
-                        localStorage.setItem('vectracore_user_email', email);
-                        window.location.reload();
+                    item.addEventListener('click', async () => {
+                        // Ask the server to actually move the authenticated
+                        // session to this email first. Without this step the
+                        // server-side session cookie (the real source of
+                        // truth for plan/usage/sessions) never changes, and
+                        // the previous account's plan (e.g. VIP) keeps being
+                        // used no matter which email the UI shows.
+                        item.disabled = true;
+                        try {
+                            const res = await fetch(`${API_BASE_URL}/switch-account`, {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email })
+                            });
+                            if (!res.ok) {
+                                alert('Could not switch to this account. Please sign in with it again.');
+                                item.disabled = false;
+                                return;
+                            }
+                            const result = await res.json();
+                            localStorage.setItem('vectracore_user_email', email);
+                            localStorage.setItem('vectracore_plan', result.plan || 'default');
+                            localStorage.setItem('vectracore_selected_plan', result.plan || 'default');
+                            window.location.reload();
+                        } catch (err) {
+                            alert('Could not switch accounts — check your connection and try again.');
+                            item.disabled = false;
+                        }
                     });
 
                     const removeBtn = document.createElement('button');
