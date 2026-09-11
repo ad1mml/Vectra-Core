@@ -1331,11 +1331,23 @@
                 }
 
                 if (sessionsEnabled && currentSessionId) {
-                    // Pro/VIP: replay the full thread from the server so the
-                    // viewport always matches exactly what's saved (and what
-                    // reopening this session from Recents will show later).
-                    await openSession(currentSessionId, { fallback: result });
-                    await loadSessions();
+                    // Pro/VIP: append the new turn straight from the response
+                    // we just got back, instead of re-fetching the session
+                    // from the server. Re-fetching immediately after POST was
+                    // racing the backend's write to session storage, so it
+                    // would sometimes return the thread WITHOUT the message
+                    // we just sent, and no error was thrown to trigger the
+                    // fallback (the fetch itself succeeded, just with stale
+                    // data) — the new turn only appeared once you reopened
+                    // the session later, by which point the backend had
+                    // caught up. Rendering from `result` directly avoids the
+                    // race and the extra round trip.
+                    const viewport = document.getElementById('ai-response-viewport');
+                    const userLabel = uploadedImage ? 'Chart uploaded' : 'You asked';
+                    viewport.insertAdjacentHTML('beforeend', buildUserTurnHTML(userLabel, promptValue));
+                    viewport.insertAdjacentHTML('beforeend', buildAssistantTurnHTML(result));
+                    viewport.scrollTop = viewport.scrollHeight;
+                    loadSessions(); // refresh the sidebar list in the background, no need to block on it
                 } else {
                     renderAIResponse(result);
                 }
