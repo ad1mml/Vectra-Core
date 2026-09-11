@@ -48,7 +48,7 @@ from prompts.vip_prompt import VIP_PROMPT
 from prompts.default_prompt import DEFAULT_PROMPT
 from prompts.pro_prompt import PRO_PROMPT
 import requests
-from flask import Flask, request, jsonify, render_template_string, Response, redirect
+from flask import Flask, request, jsonify, render_template_string, Response, redirect, session
 from flask_cors import CORS
 from PIL import Image
 from dotenv import load_dotenv 
@@ -57,6 +57,7 @@ from google.genai import types
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_auth_requests
 from datetime import datetime, timedelta
+from functools import wraps
 from prompts.memory_summarizer import MEMORY_SUMMARIZER
 print("USING APP FILE:", __file__)
 
@@ -84,6 +85,12 @@ if not ADMIN_SECRET_KEY:
 
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY")  # powers /market-sentiment AND chat news lookups
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
+SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "").strip()
+# Backward-compatible fallback: derives a separate signing key from the existing
+# admin secret so deployment does not break if SESSION_SECRET_KEY is not yet set.
+if not SESSION_SECRET_KEY:
+    SESSION_SECRET_KEY = hashlib.sha256(("vectracore-session:" + ADMIN_SECRET_KEY).encode()).hexdigest()
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() == "true"
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 PLAN_CONFIG = {
     "default": {
@@ -215,7 +222,60 @@ VERIFICATION_RESEND_COOLDOWN_SECONDS = 45  # throttle "resend code" spam
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 app = Flask(__name__, static_folder="public", static_url_path="")
+app.config.update(
+    SECRET_KEY=SESSION_SECRET_KEY,
+    SESSION_COOKIE_NAME="vectracore_session",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+)
 CORS(app, origins=ALLOWED_ORIGINS.split(",") if ALLOWED_ORIGINS != "*" else "*")
+
+
+@app.after_request
+def add_security_headers(response):
+    # Safe browser hardening that does not change the application's frontend content.
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.is_secure:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
+def _authenticated_email():
+    """Return the email bound to the signed server-side session, or None.
+
+    Client-supplied email values are deliberately NOT accepted as identity.
+    """
+    email = (session.get("user_email") or "").strip().lower()
+    if not email or not _valid_email(email):
+        return None
+    return email
+
+
+def _require_authenticated_email():
+    email = _authenticated_email()
+    if not email:
+        return None, (jsonify({"error": "Authentication required. Please sign in again."}), 401)
+    return email, None
+
+
+def _admin_key_from_request():
+    # Prefer a header so the secret is not placed in URLs/logs. Keep the old
+    # query-string method as a compatibility fallback for the existing admin UI.
+    header_key = request.headers.get("X-Admin-Key", "").strip()
+    auth = request.headers.get("Authorization", "")
+    bearer_key = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    return header_key or bearer_key or (request.args.get("key") or "").strip()
+
+
+def _admin_authorized():
+    supplied = _admin_key_from_request()
+    return bool(supplied) and secrets.compare_digest(supplied, ADMIN_SECRET_KEY)
+
 
 
 @app.route("/")
@@ -1677,7 +1737,9 @@ def create_paypal_subscription():
     if not PAYPAL_CLIENT_SECRET:
         return jsonify({"error": "PayPal payments are not configured on the server."}), 503
     data = request.get_json(silent=True) or {}
-    email = (data.get("email") or data.get("user_email") or "").strip().lower()
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
     requested_plan = data.get("plan") or data.get("plan_key") or ""
     if not email or not _valid_email(email):
         return jsonify({"error": "A valid email is required."}), 400
@@ -1710,7 +1772,7 @@ def create_paypal_subscription():
         payload = r.json() if r.content else {}
     except Exception as exc:
         app.logger.exception("PayPal subscription creation failed")
-        return jsonify({"error": "Could not connect to PayPal.", "details": str(exc)[:200]}), 502
+        return jsonify({"error": "Could not connect to PayPal."}), 502
     if r.status_code >= 300:
         app.logger.error("PayPal create subscription failed: %s %s", r.status_code, r.text[:1000])
         return jsonify({"error": "PayPal could not create the subscription.", "paypal": payload}), 502
@@ -1740,7 +1802,9 @@ def create_paypal_subscription():
 @app.route("/confirm-subscription", methods=["POST"])
 def confirm_paypal_subscription():
     data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
     subscription_id = (data.get("subscription_id") or data.get("subscriptionID") or "").strip()
     requested_plan = (data.get("plan") or "").strip().lower()
     plan_key = _paypal_plan_key(requested_plan)
@@ -1763,7 +1827,7 @@ def confirm_paypal_subscription():
         payload = r.json() if r.content else {}
     except Exception as exc:
         app.logger.exception("PayPal subscription confirmation failed")
-        return jsonify({"confirmed": False, "error": "Could not verify the PayPal subscription.", "details": str(exc)[:200]}), 502
+        return jsonify({"confirmed": False, "error": "Could not verify the PayPal subscription."}), 502
 
     if r.status_code >= 300:
         return jsonify({"confirmed": False, "error": "PayPal could not verify this subscription.", "paypal": payload}), 502
@@ -1841,8 +1905,8 @@ def admin_grant_access():
     cannot create a real charge or a real PayPal subscription. Revoking is
     the same call with "plan": "default".
     """
-    user_key = request.args.get("key")
-    if not user_key or user_key != ADMIN_SECRET_KEY:
+    user_key = _admin_key_from_request()
+    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
         return jsonify({"error": "Not authorized."}), 403
 
     data = request.get_json(silent=True) or {}
@@ -1969,6 +2033,11 @@ def verify_code():
     del pending[email]
     _save_json(PENDING_FILE, pending)
 
+    session.clear()
+    session.permanent = True
+    session["user_email"] = email
+    session["authenticated_at"] = time.time()
+
     return jsonify({"status": "success", "email": email, "plan": account["plan"]}), 200
 
 
@@ -2026,6 +2095,11 @@ def google_signin():
         del pending[email]
         _save_json(PENDING_FILE, pending)
 
+    session.clear()
+    session.permanent = True
+    session["user_email"] = email
+    session["authenticated_at"] = time.time()
+
     return jsonify({"status": "success", "email": email, "plan": account["plan"]}), 200
 
 
@@ -2033,9 +2107,9 @@ def google_signin():
 def get_usage_route():
     """Lets the frontend show 'X/20 charts used this month' and a countdown
     to the next reset at any time — not just right after an upload."""
-    email = (request.args.get("email") or "").strip().lower()
-    if not email:
-        return jsonify({"error": "Email required"}), 400
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
     # The plan must come from the verified account, never from the client —
     # otherwise anyone could pass ?plan=vip and see (or fake) an "unlimited"
     # usage response regardless of what they're actually subscribed to.
@@ -2064,9 +2138,9 @@ def get_usage_route():
 def get_account():
     """Look up which plan an email is on — useful once each plan routes to
     its own AI agent."""
-    email = (request.args.get("email") or "").strip().lower()
-    if not email:
-        return jsonify({"error": "Email required"}), 400
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
 
     users = _load_json(USERS_FILE, {})
     account = users.get(email, {})
@@ -2082,7 +2156,9 @@ def get_account():
 
 @app.route("/history", methods=["GET"])
 def get_history():
-    email = (request.args.get("email") or "guest@vectracore.ai").strip().lower()
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
     history = _load_json(HISTORY_FILE, {})
     return jsonify(history.get(email, [])), 200
 
@@ -2095,7 +2171,9 @@ def list_sessions():
     """Powers the Recents sidebar. Pro/VIP only — Default plan keeps
     working normally (analysis + follow-ups), it just never gets a
     browsable history."""
-    email = (request.args.get("email") or "guest@vectracore.ai").strip().lower()
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
     # Never trust a client-supplied plan for gating a paid feature — look up
     # what this email is actually subscribed to.
     plan = _effective_plan_for_email(email, request.args.get("plan") or "default")
@@ -2127,9 +2205,11 @@ def list_sessions():
 def get_session(session_id):
     """Returns one full session (all turns) so it can be reopened and
     continued, or replayed read-only, in the Recents sidebar."""
-    email = (request.args.get("email") or "guest@vectracore.ai").strip().lower()
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
     # Never trust a client-supplied plan for gating a paid feature — look up
-    # what this email is actually subscribed to.
+    # what this authenticated account is actually subscribed to.
     plan = _effective_plan_for_email(email, request.args.get("plan") or "default")
 
     if plan not in SESSION_PLANS:
@@ -2180,13 +2260,13 @@ def market_sentiment():
         
         if _is_transient_error(e):
             return jsonify({"error": "The AI model is currently overloaded. Please try again in 10-20 seconds."}), 503
-        return jsonify({
-            "error": "Analysis failed",
-            "details": str(e)[:200]   # show more info to frontend temporarily
-        }), 500
+        app.logger.exception("market_sentiment failed")
+        return jsonify({"error": "Analysis failed."}), 500
 
 @app.route("/test-gemini", methods=["GET"])
 def test_gemini():
+    if os.environ.get("EXPOSE_DIAGNOSTICS", "false").lower() != "true" and not _admin_authorized():
+        return jsonify({"error": "Not available."}), 404
     try:
         response = client.models.generate_content(
             model=MODEL_NAME,
@@ -2202,9 +2282,10 @@ def test_gemini():
         })
 
     except Exception as e:
+        app.logger.exception("Gemini diagnostic failed")
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": "Diagnostic request failed."
         }), 500
 
 @app.route("/news", methods=["GET"])
@@ -2243,8 +2324,8 @@ def submit_feedback():
 
 @app.route("/admin/feedback", methods=["GET"])
 def view_feedbacks():
-    user_key = request.args.get("key")
-    if not user_key or user_key != ADMIN_SECRET_KEY:
+    user_key = _admin_key_from_request()
+    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
         return "Access Denied: Invalid or missing administrator security key.", 403
 
     feedbacks = _load_json(FEEDBACK_FILE, [])
@@ -2306,8 +2387,8 @@ def view_users():
     pulled for welcome, discount, or announcement campaigns. Only emails
     that made it through /verify-code land in users.json — unverified
     addresses from an abandoned signup never get stored here."""
-    user_key = request.args.get("key")
-    if not user_key or user_key != ADMIN_SECRET_KEY:
+    user_key = _admin_key_from_request()
+    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
         return "Access Denied: Invalid or missing administrator security key.", 403
 
     users = _load_json(USERS_FILE, {})
@@ -2394,8 +2475,8 @@ def export_users_csv():
     email marketing tool (Mailchimp, Brevo, Resend Broadcasts, etc.) rather
     than sending bulk mail straight from this backend, since those tools
     handle unsubscribe links and delivery reputation properly."""
-    user_key = request.args.get("key")
-    if not user_key or user_key != ADMIN_SECRET_KEY:
+    user_key = _admin_key_from_request()
+    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
         return "Access Denied: Invalid or missing administrator security key.", 403
 
     users = _load_json(USERS_FILE, {})
@@ -2425,6 +2506,8 @@ def health():
     return jsonify({"status": "ok"}), 200
 @app.route("/list-models", methods=["GET"])
 def list_models():
+    if os.environ.get("EXPOSE_DIAGNOSTICS", "false").lower() != "true" and not _admin_authorized():
+        return jsonify({"error": "Not available."}), 404
     try:
         models = client.models.list()
         available = []
@@ -2435,8 +2518,9 @@ def list_models():
                 "supported_actions": getattr(m, "supported_actions", [])
             })
         return jsonify(available)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500 
+    except Exception:
+        app.logger.exception("Model listing failed")
+        return jsonify({"error": "Could not list models."}), 500
 
 @app.route("/analyze-chart", methods=["POST"])
 def analyze_chart():
@@ -2444,8 +2528,7 @@ def analyze_chart():
     print("=" * 60, flush=True)
     print("ANALYZE ROUTE HIT", flush=True)
     print("METHOD:", request.method, flush=True)
-    print("FORM:", request.form.to_dict(), flush=True)
-    print("FILES:", request.files, flush=True)
+    # Do not log form fields, emails, questions, or uploaded-file metadata.
     print("=" * 60, flush=True)
 
     try:
@@ -2456,11 +2539,12 @@ def analyze_chart():
 
         question = request.form.get("question", "").strip()
 
-        user_email = request.form.get(
-            "user_email",
-            "guest"
-        ).lower().strip()
+        user_email = _authenticated_email()
+        if not user_email:
+            return jsonify({"success": False, "error": "Authentication required. Please sign in again."}), 401
 
+        # Keep accepting the frontend's plan field for compatibility, but never
+        # use it as identity or entitlement authority.
         requested_plan = request.form.get(
             "plan",
             "default"
@@ -3058,7 +3142,7 @@ Return JSON:
 
             "success": False,
 
-            "error": str(e)
+            "error": "An internal server error occurred. Please try again."
 
         }), 500
 
