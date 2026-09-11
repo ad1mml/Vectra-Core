@@ -1344,9 +1344,12 @@
                     // race and the extra round trip.
                     const viewport = document.getElementById('ai-response-viewport');
                     const userLabel = uploadedImage ? 'Chart uploaded' : 'You asked';
-                    viewport.insertAdjacentHTML('beforeend', buildUserTurnHTML(userLabel, promptValue));
-                    viewport.insertAdjacentHTML('beforeend', buildAssistantTurnHTML(result));
-                    viewport.scrollTop = viewport.scrollHeight;
+                    // Newest-first: build the user+assistant pair as one block
+                    // (so the question still sits above its own answer) and
+                    // drop that whole block at the very top of the viewport.
+                    const turnHTML = buildUserTurnHTML(userLabel, promptValue) + buildAssistantTurnHTML(result);
+                    viewport.insertAdjacentHTML('afterbegin', turnHTML);
+                    viewport.scrollTop = 0;
                     loadSessions(); // refresh the sidebar list in the background, no need to block on it
                 } else {
                     renderAIResponse(result);
@@ -1693,7 +1696,18 @@
                 const session = await response.json();
 
                 const viewport = document.getElementById('ai-response-viewport');
-                viewport.innerHTML = (session.turns || []).map(turn => {
+                const rawTurns = session.turns || [];
+                // Server returns turns oldest-first as [user1, assistant1,
+                // user2, assistant2, ...]. Group into user+assistant pairs,
+                // then reverse the PAIR order (not each pair's internal
+                // order) so the newest exchange renders at the top while the
+                // question still sits above its own answer.
+                const pairs = [];
+                for (let i = 0; i < rawTurns.length; i += 2) {
+                    pairs.push(rawTurns.slice(i, i + 2));
+                }
+                const orderedTurns = pairs.reverse().flat();
+                viewport.innerHTML = orderedTurns.map(turn => {
                     if (turn.role === 'user') {
                         const label = turn.type === 'chart' ? 'Chart uploaded' : 'You asked';
                         return buildUserTurnHTML(label, turn.content);
@@ -1703,7 +1717,7 @@
                     }
                     return buildAssistantTurnHTML({ answer: turn.content });
                 }).join('');
-                viewport.scrollTop = viewport.scrollHeight;
+                viewport.scrollTop = 0;
 
                 recentsBody.querySelectorAll('.recents-item').forEach(node => {
                     node.classList.toggle('active', node.dataset.sessionId === sessionId);
