@@ -42,6 +42,7 @@ import secrets
 import hashlib
 import uuid
 import threading
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from prompts.followup_prompt import FOLLOWUP_PROMPT as FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
@@ -84,7 +85,7 @@ if not ADMIN_SECRET_KEY:
     )
 
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY")  # powers /market-sentiment AND chat news lookups
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "https://www.vectracore.app,https://vectracore.app")
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "").strip()
 # Backward-compatible fallback: derives a separate signing key from the existing
 # admin secret so deployment does not break if SESSION_SECRET_KEY is not yet set.
@@ -229,6 +230,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
     SESSION_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
 )
 CORS(app, origins=ALLOWED_ORIGINS.split(",") if ALLOWED_ORIGINS != "*" else "*")
 
@@ -263,18 +265,57 @@ def _require_authenticated_email():
     return email, None
 
 
+# Lightweight in-process rate limiting. This is intentionally dependency-free so it
+# does not alter the existing requirements. In a multi-worker deployment, put a
+# shared rate limiter (Redis/reverse proxy) in front of the app as well.
+_rate_limit_lock = threading.Lock()
+_rate_limit_buckets = defaultdict(deque)
+
+def _client_ip():
+    # Do not trust arbitrary X-Forwarded-For headers here; unless a trusted proxy
+    # is configured, remote_addr is the only address Flask can safely identify.
+    return request.remote_addr or "unknown"
+
+def _rate_limited(bucket: str, limit: int, window_seconds: int, identifier=None) -> bool:
+    key = (bucket, identifier if identifier is not None else _client_ip())
+    now = time.monotonic()
+    cutoff = now - window_seconds
+    with _rate_limit_lock:
+        q = _rate_limit_buckets[key]
+        while q and q[0] <= cutoff:
+            q.popleft()
+        if len(q) >= limit:
+            return True
+        q.append(now)
+        # Prevent unbounded growth of the dictionary for one-off IPs/buckets.
+        if len(_rate_limit_buckets) > 10000:
+            for old_key, old_q in list(_rate_limit_buckets.items()):
+                if not old_q or old_q[-1] <= cutoff:
+                    _rate_limit_buckets.pop(old_key, None)
+    return False
+
+
 def _admin_key_from_request():
-    # Prefer a header so the secret is not placed in URLs/logs. Keep the old
-    # query-string method as a compatibility fallback for the existing admin UI.
+    # Admin secrets are accepted only in headers. Never accept ?key=... because
+    # query strings can leak through browser history, access logs and referrers.
     header_key = request.headers.get("X-Admin-Key", "").strip()
     auth = request.headers.get("Authorization", "")
     bearer_key = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    return header_key or bearer_key or (request.args.get("key") or "").strip()
+    return header_key or bearer_key
 
 
 def _admin_authorized():
+    # Normal admin browsing uses a server-side session established by /admin/login.
+    if session.get("admin_authenticated") is True:
+        return True
     supplied = _admin_key_from_request()
     return bool(supplied) and secrets.compare_digest(supplied, ADMIN_SECRET_KEY)
+
+
+def _require_admin():
+    if not _admin_authorized():
+        return jsonify({"error": "Not authorized."}), 403
+    return None
 
 
 
@@ -1890,24 +1931,46 @@ def paypal_webhook():
         return jsonify({"error": "Webhook processing failed."}), 500
 
 
+@app.route("/admin/login", methods=["POST"])
+def admin_login():
+    """Establish an admin session without putting the admin secret in a URL."""
+    if _rate_limited("admin-login", 5, 300):
+        return jsonify({"error": "Too many admin login attempts. Please try again later."}), 429
+
+    supplied = _admin_key_from_request()
+    if not supplied or not secrets.compare_digest(supplied, ADMIN_SECRET_KEY):
+        return jsonify({"error": "Not authorized."}), 403
+
+    session.clear()
+    session["admin_authenticated"] = True
+    session.permanent = True
+    return jsonify({"status": "success"}), 200
+
+
+@app.route("/admin/logout", methods=["POST"])
+def admin_logout():
+    session.pop("admin_authenticated", None)
+    return jsonify({"status": "success"}), 200
+
+
 @app.route("/admin/grant-access", methods=["POST"])
 def admin_grant_access():
     """
     Owner-only tool for comping free Pro/VIP access, completely outside the
-    PayPal flow. Protected the same way as /admin/feedback and /admin/users
-    — a query-string ?key=ADMIN_SECRET_KEY that must match the server's
-    ADMIN_SECRET_KEY env var. Never expose this key in any frontend file.
+    PayPal flow. Authenticate with an admin session from /admin/login or with
+    X-Admin-Key / Authorization: Bearer on the request. Never put the secret
+    in a URL or frontend file.
 
-    POST /admin/grant-access?key=YOUR_ADMIN_SECRET_KEY
+    POST /admin/grant-access
     Body: {"email": "someone@example.com", "plan": "vip"}   # or "pro", or "default" to revoke
 
     This only ever writes to users.json — it never talks to PayPal, so it
     cannot create a real charge or a real PayPal subscription. Revoking is
     the same call with "plan": "default".
     """
-    user_key = _admin_key_from_request()
-    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
-        return jsonify({"error": "Not authorized."}), 403
+    admin_error = _require_admin()
+    if admin_error:
+        return admin_error
 
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
@@ -1952,6 +2015,11 @@ def send_verification_code():
 
     if not email or not _valid_email(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
+
+    if _rate_limited("verification-ip", 5, 600):
+        return jsonify({"error": "Too many verification requests. Please try again later."}), 429
+    if _rate_limited("verification-email", 3, 900, email):
+        return jsonify({"error": "Too many verification requests for this email. Please try again later."}), 429
 
     if not agreed_policies:
         return jsonify({"error": "You must agree to the Terms of Service and Privacy Policy to continue."}), 400
@@ -2310,6 +2378,12 @@ def submit_feedback():
 
     if not email or not message:
         return jsonify({"error": "Missing required email or feedback message."}), 400
+    if len(email) > 254:
+        return jsonify({"error": "Email address is too long."}), 400
+    if len(message) > 5000:
+        return jsonify({"error": "Feedback message is too long (maximum 5000 characters)."}), 400
+    if _rate_limited("feedback-ip", 5, 600):
+        return jsonify({"error": "Too many feedback submissions. Please try again later."}), 429
 
     feedbacks = _load_json(FEEDBACK_FILE, [])
     feedbacks.append({
@@ -2324,9 +2398,9 @@ def submit_feedback():
 
 @app.route("/admin/feedback", methods=["GET"])
 def view_feedbacks():
-    user_key = _admin_key_from_request()
-    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
-        return "Access Denied: Invalid or missing administrator security key.", 403
+    admin_error = _require_admin()
+    if admin_error:
+        return admin_error
 
     feedbacks = _load_json(FEEDBACK_FILE, [])
 
@@ -2358,7 +2432,7 @@ def view_feedbacks():
         </style>
     </head>
     <body>
-        <div class="admin-nav"><a href="/admin/users?key={{ key }}">&larr; Registered Users</a></div>
+        <div class="admin-nav"><a href="/admin/users">&larr; Registered Users</a></div>
         <h2>VECTRACORE // ADMIN FEEDBACK</h2>
         <p class="subtitle">Viewing {{ feedbacks|length }} submission(s).</p>
         {% if feedbacks %}
@@ -2378,7 +2452,7 @@ def view_feedbacks():
     </body>
     </html>
     """
-    return render_template_string(admin_template, feedbacks=feedbacks, key=user_key)
+    return render_template_string(admin_template, feedbacks=feedbacks)
 
 
 @app.route("/admin/users", methods=["GET"])
@@ -2387,9 +2461,9 @@ def view_users():
     pulled for welcome, discount, or announcement campaigns. Only emails
     that made it through /verify-code land in users.json — unverified
     addresses from an abandoned signup never get stored here."""
-    user_key = _admin_key_from_request()
-    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
-        return "Access Denied: Invalid or missing administrator security key.", 403
+    admin_error = _require_admin()
+    if admin_error:
+        return admin_error
 
     users = _load_json(USERS_FILE, {})
     rows = [
@@ -2442,8 +2516,8 @@ def view_users():
     </head>
     <body>
         <div class="admin-nav">
-            <a href="/admin/feedback?key={{ key }}">&larr; Feedback</a>
-            <a class="export-btn" href="/admin/users.csv?key={{ key }}">Download CSV</a>
+            <a href="/admin/feedback">&larr; Feedback</a>
+            <a class="export-btn" href="/admin/users.csv">Download CSV</a>
         </div>
         <h2>VECTRACORE // REGISTERED USERS</h2>
         <p class="subtitle">{{ rows|length }} verified email(s) on file. Export the CSV to import into your email tool for welcome/discount/announcement campaigns.</p>
@@ -2466,7 +2540,7 @@ def view_users():
     </body>
     </html>
     """
-    return render_template_string(admin_template, rows=rows, key=user_key)
+    return render_template_string(admin_template, rows=rows)
 
 
 @app.route("/admin/users.csv", methods=["GET"])
@@ -2475,9 +2549,9 @@ def export_users_csv():
     email marketing tool (Mailchimp, Brevo, Resend Broadcasts, etc.) rather
     than sending bulk mail straight from this backend, since those tools
     handle unsubscribe links and delivery reputation properly."""
-    user_key = _admin_key_from_request()
-    if not user_key or not secrets.compare_digest(user_key, ADMIN_SECRET_KEY):
-        return "Access Denied: Invalid or missing administrator security key.", 403
+    admin_error = _require_admin()
+    if admin_error:
+        return admin_error
 
     users = _load_json(USERS_FILE, {})
 
