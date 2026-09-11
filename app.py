@@ -54,6 +54,8 @@ from PIL import Image
 from dotenv import load_dotenv 
 from google import genai
 from google.genai import types
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_auth_requests
 from datetime import datetime, timedelta
 from prompts.memory_summarizer import MEMORY_SUMMARIZER
 print("USING APP FILE:", __file__)
@@ -172,6 +174,17 @@ PER_ATTEMPT_TIMEOUT_MS = max(10000, int(os.environ.get("AI_PER_ATTEMPT_TIMEOUT_M
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
 FROM_EMAIL = os.environ.get("FROM_EMAIL")
 FROM_NAME = os.environ.get("FROM_NAME", "VectraCore")
+
+# Google Sign-In — lets a user create/access their account with one tap
+# instead of the email+code flow. The ID token from the frontend's Google
+# button is verified server-side against this client ID before we ever
+# trust the email inside it.
+#   1. Create an OAuth 2.0 Client ID (type "Web application") at
+#      https://console.cloud.google.com/apis/credentials
+#   2. Add your site's origin(s) under "Authorized JavaScript origins"
+#   3. Set GOOGLE_CLIENT_ID in .env to that client ID, and put the exact
+#      same value in the frontend's GOOGLE_CLIENT_ID constant
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 
 # PayPal Subscriptions. The client secret is server-only and must be supplied
 # through PAYPAL_CLIENT_SECRET; never expose it to the browser.
@@ -578,38 +591,62 @@ def _send_verification_email(to_email: str, code: str) -> bool:
         "If you didn't request this, you can safely ignore this email."
     )
 
-    try:
-        response = requests.post(
-            "https://api.brevo.com/v3/smtp/email",
-            headers={
-                "api-key": BREVO_API_KEY,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            json={
-                "sender": {"name": FROM_NAME, "email": FROM_EMAIL},
-                "to": [{"email": to_email}],
-                "subject": "Your VectraCore verification code",
-                "textContent": body,
-            },
-            timeout=10,
-        )
-        if response.status_code >= 300:
-            app.logger.error(
-                "Brevo rejected the email to %s: %s %s",
-                to_email, response.status_code, response.text
+    # Brevo occasionally has brief 5xx blips / timeouts that have nothing to
+    # do with the recipient address — retrying once or twice on those
+    # (never on a 4xx, which means Brevo actively rejected the request)
+    # turns a real chunk of "Unable to send the code" failures into a
+    # successful send instead of losing the signup outright.
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": BREVO_API_KEY,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json={
+                    "sender": {"name": FROM_NAME, "email": FROM_EMAIL},
+                    "to": [{"email": to_email}],
+                    "subject": "Your VectraCore verification code",
+                    "textContent": body,
+                },
+                timeout=10,
             )
-            return False
-        return True
-    except Exception as e:
-        app.logger.error("Failed to send verification email to %s: %s", to_email, e)
-        return False
+            if response.status_code < 300:
+                return True
+
+            last_error = f"{response.status_code} {response.text}"
+            if response.status_code < 500:
+                # Brevo rejected the request outright (bad recipient, auth
+                # issue, etc.) — retrying the same request won't help.
+                app.logger.error("Brevo rejected the email to %s: %s", to_email, last_error)
+                return False
+
+            app.logger.warning(
+                "Brevo returned a transient error sending to %s (attempt %d/3): %s",
+                to_email, attempt + 1, last_error
+            )
+        except requests.exceptions.RequestException as e:
+            last_error = str(e)
+            app.logger.warning(
+                "Network error sending verification email to %s (attempt %d/3): %s",
+                to_email, attempt + 1, last_error
+            )
+
+        if attempt < 2:
+            time.sleep(1.5 * (attempt + 1))
+
+    app.logger.error("Failed to send verification email to %s after retries: %s", to_email, last_error)
+    return False
 
 
-def _create_or_update_account(email: str, plan: str, agreed_policies: bool = False, marketing_consent: bool = False) -> dict:
+def _create_or_update_account(email: str, plan: str, agreed_policies: bool = False, marketing_consent: bool = False, auth_method: str = "email") -> dict:
     """Same bookkeeping /register used to do — now only ever called after a
-    code has been correctly verified, so an account is never created for an
-    email the requester doesn't actually control."""
+    code has been correctly verified (or a Google ID token has been verified),
+    so an account is never created for an email the requester doesn't
+    actually control."""
     history = _load_json(HISTORY_FILE, {})
     if email not in history:
         history[email] = []
@@ -629,10 +666,14 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
                 # the optional "send me updates" checkbox so marketing sends
                 # never get bundled with required legal consent.
                 "marketing_consent": marketing_consent,
+                # How they most recently signed in — "email" (code) or
+                # "google". Purely informational (shown in /admin/users).
+                "auth_method": auth_method,
             }
         else:
             users[email]["plan"] = plan
             users[email]["verified"] = True
+            users[email]["auth_method"] = auth_method
             if agreed_policies and not users[email].get("agreed_policies"):
                 users[email]["agreed_policies"] = True
                 users[email]["agreed_policies_at"] = now_str
@@ -1923,9 +1964,67 @@ def verify_code():
         record["plan"],
         record.get("agreed_policies", False),
         record.get("marketing_consent", False),
+        auth_method="email",
     )
     del pending[email]
     _save_json(PENDING_FILE, pending)
+
+    return jsonify({"status": "success", "email": email, "plan": account["plan"]}), 200
+
+
+@app.route("/google-signin", methods=["POST"])
+def google_signin():
+    """Google one-tap signup/sign-in. The frontend hands us the raw ID token
+    from Google's own button — we verify it server-side (signature, expiry,
+    and audience) before trusting anything inside it, then create/update the
+    account exactly like a verified email+code signup would. No 6-digit code
+    is needed here because Google has already proven the user controls that
+    email address."""
+    if not GOOGLE_CLIENT_ID:
+        app.logger.error("GOOGLE_CLIENT_ID is not set — /google-signin cannot verify tokens.")
+        return jsonify({"error": "Google sign-in isn't configured yet. Please use email instead."}), 503
+
+    data = request.get_json(silent=True) or {}
+    credential = (data.get("credential") or "").strip()
+    plan = (data.get("plan") or "default").strip().lower()
+    if plan not in VALID_PLANS:
+        plan = "default"
+    agreed_policies = bool(data.get("agreed_policies"))
+    marketing_consent = bool(data.get("marketing_consent"))
+
+    if not credential:
+        return jsonify({"error": "Missing Google credential."}), 400
+
+    if not agreed_policies:
+        return jsonify({"error": "You must agree to the Terms of Service and Privacy Policy to continue."}), 400
+
+    try:
+        payload = google_id_token.verify_oauth2_token(
+            credential, google_auth_requests.Request(), GOOGLE_CLIENT_ID
+        )
+    except ValueError as e:
+        # Covers a forged/expired/wrong-audience token — never trust the
+        # email inside an unverified JWT.
+        app.logger.warning("Rejected an invalid Google credential: %s", e)
+        return jsonify({"error": "Google sign-in couldn't be verified. Please try again."}), 401
+
+    if not payload.get("email_verified", False):
+        return jsonify({"error": "That Google account's email isn't verified. Please use email sign-in instead."}), 400
+
+    email = (payload.get("email") or "").strip().lower()
+    if not email or not _valid_email(email):
+        return jsonify({"error": "Google didn't return a usable email address."}), 400
+
+    account = _create_or_update_account(
+        email, plan, agreed_policies, marketing_consent, auth_method="google"
+    )
+
+    # Clear out any unrelated pending email-code verification for this
+    # address so a stale code can't be replayed later.
+    pending = _load_json(PENDING_FILE, {})
+    if email in pending:
+        del pending[email]
+        _save_json(PENDING_FILE, pending)
 
     return jsonify({"status": "success", "email": email, "plan": account["plan"]}), 200
 

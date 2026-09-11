@@ -36,6 +36,7 @@
     }
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         :root {
             --bg-color: #050A1A;
@@ -433,6 +434,30 @@
             display: flex;
             flex-direction: column;
             gap: 14px;
+        }
+
+        .google-btn-wrap {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 18px;
+            min-height: 40px;
+        }
+
+        .modal-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin-bottom: 18px;
+        }
+
+        .modal-divider::before,
+        .modal-divider::after {
+            content: "";
+            flex: 1;
+            height: 1px;
+            background-color: var(--border-color);
         }
 
         .modal-input {
@@ -917,6 +942,9 @@
                 <h3>Unlock <span>VectraCore</span></h3>
                 <p>Enter your email to access our professional terminal workspaces.</p>
 
+                <div class="google-btn-wrap" id="google-btn-wrap"></div>
+                <div class="modal-divider"><span>or continue with email</span></div>
+
                 <form class="modal-form" id="email-form">
                     <input type="email" id="user-email-field" class="modal-input" placeholder="Enter your email address" aria-label="Email address" required>
                     <div class="consent-row">
@@ -927,7 +955,7 @@
                         <input type="checkbox" id="marketing-consent-checkbox">
                         <label for="marketing-consent-checkbox">Send me product updates and offers.</label>
                     </div>
-                    <p class="modal-error" id="email-error-text">Unable to send the verification code. Please try again.</p>
+                    <p class="modal-error" id="email-error-text">That didn't go through on our end — please try again in a few seconds.</p>
                     <button type="submit" class="submit-btn" id="email-submit-btn">Send Verification Code</button>
                 </form>
             </div>
@@ -1176,10 +1204,64 @@
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(result.error || 'Unable to send the verification code. Please try again.');
+                throw new Error(result.error || "That didn't go through on our end — please try again in a few seconds.");
             }
             return result;
         }
+
+        // --- Google sign-up/sign-in ---
+        // Renders Google's official button and exchanges the returned ID
+        // token with our backend, which verifies it and creates/logs in
+        // the account the same way email+code does. Replace
+        // GOOGLE_CLIENT_ID below with the real OAuth client ID before
+        // going live.
+        const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+
+        async function handleGoogleCredentialResponse(response) {
+            codeErrorText.style.display = 'none';
+            emailErrorText.style.display = 'none';
+            try {
+                const res = await fetch(`${API_BASE_URL}/google-signin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        credential: response.credential,
+                        plan: selectedPlan,
+                        agreed_policies: true,
+                        marketing_consent: Boolean(marketingCheckbox && marketingCheckbox.checked)
+                    })
+                });
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error(result.error || 'Google sign-in failed. Please try again.');
+                }
+                localStorage.setItem('vectracore_user_email', result.email);
+                localStorage.setItem('vectracore_selected_plan', result.plan || selectedPlan);
+                window.location.href = redirectTarget;
+            } catch (err) {
+                emailErrorText.textContent = err.message;
+                emailErrorText.style.display = 'block';
+            }
+        }
+
+        function renderGoogleButton() {
+            const wrap = document.getElementById('google-btn-wrap');
+            if (!wrap || typeof google === 'undefined' || !google.accounts || !google.accounts.id) return;
+            wrap.innerHTML = '';
+            google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleGoogleCredentialResponse
+            });
+            google.accounts.id.renderButton(wrap, {
+                theme: 'filled_black',
+                size: 'large',
+                shape: 'rectangular',
+                text: 'signup_with',
+                width: 320
+            });
+        }
+
+        window.addEventListener('load', renderGoogleButton);
 
         function isAlreadyRegistered() {
             return Boolean(localStorage.getItem('vectracore_user_email'));
@@ -1194,6 +1276,17 @@
         const urlParams = new URLSearchParams(window.location.search);
         const planFromUrl = urlParams.get('plan');
         const nextFromUrl = urlParams.get('next');
+        const reauthFromUrl = urlParams.get('reauth');
+
+        // "Change account" on work.html clears the stored email and sends
+        // the user here with ?reauth=1 so the sign-in modal opens right
+        // away, letting them verify a different email or use Google.
+        if (reauthFromUrl === '1') {
+            redirectTarget = 'work.html';
+            resetModal();
+            modal.style.display = 'flex';
+        }
+
         if (planFromUrl && ['default', 'pro', 'vip'].includes(planFromUrl)) {
             selectedPlan = planFromUrl;
             localStorage.setItem('vectracore_selected_plan', selectedPlan);

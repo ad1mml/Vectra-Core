@@ -45,8 +45,8 @@
 
         .header-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 1; }
         .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text-main); min-width: 0; overflow: hidden; }
-        .logo-mark { width: 26px; height: 26px; flex-shrink: 0; }
-        .logo h1 { font-size: 1.3rem; letter-spacing: 2px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+        .logo-mark { width: 28px; height: 28px; flex-shrink: 0; }
+        .logo h1 { font-size: 1.5rem; letter-spacing: 2px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
         .logo h1 span { color: var(--accent-color); }
 
         .mobile-menu-btn {
@@ -100,6 +100,79 @@
             padding: 6px 12px;
             border-radius: 4px;
             border: 1px solid rgba(139, 92, 246, 0.2);
+        }
+
+        .profile-menu { position: relative; flex-shrink: 0; }
+
+        .profile-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: var(--text-main);
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .profile-btn svg { width: 18px; height: 18px; }
+
+        .profile-btn:hover,
+        .profile-menu.open .profile-btn {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: var(--accent-color);
+        }
+
+        .profile-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            min-width: 240px;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 14px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+            z-index: 800;
+        }
+
+        .profile-menu.open .profile-dropdown { display: block; }
+
+        .profile-dropdown-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .profile-dropdown-email {
+            font-size: 0.88rem;
+            color: var(--text-main);
+            word-break: break-all;
+            margin-bottom: 12px;
+        }
+
+        .change-account-btn {
+            width: 100%;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 9px 10px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .change-account-btn:hover {
+            background-color: rgba(139, 92, 246, 0.1);
+            border-color: var(--accent-color);
         }
 
         .workspace-container { display: flex; flex: 1; overflow: hidden; }
@@ -1004,6 +1077,9 @@
             .feedback-btn-short { display: none; }
             .upgrade-btn, .feedback-btn { padding: 6px 8px; font-size: 0.68rem; }
             .trade-levels-grid { grid-template-columns: 1fr; }
+            .profile-btn { width: 30px; height: 30px; }
+            .profile-btn svg { width: 16px; height: 16px; }
+            .profile-dropdown { min-width: 200px; right: -8px; }
         }
     </style>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -1040,7 +1116,17 @@
             <div id="credits-badge" class="user-badge" style="display:none;" title=""></div>
 
             <a href="pricing.html" class="upgrade-btn"><span class="upgrade-btn-full">⬆ Upgrade Plan</span><span class="upgrade-btn-short">⬆ Upgrade</span></a>
-            <div class="user-badge" id="current-user">guest@vectracore.ai</div>
+
+            <div class="profile-menu" id="profile-menu">
+                <button type="button" class="profile-btn" id="profile-btn" aria-label="Account menu" aria-haspopup="true" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </button>
+                <div class="profile-dropdown" id="profile-dropdown">
+                    <div class="profile-dropdown-label">Signed in as</div>
+                    <div class="profile-dropdown-email" id="profile-dropdown-email">guest@vectracore.ai</div>
+                    <button type="button" class="change-account-btn" id="change-account-btn">Change account</button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -1125,9 +1211,41 @@
         let sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
         let currentSessionId = null;
 
-        document.getElementById('current-user').textContent = activeProfile;
+        document.getElementById('profile-dropdown-email').textContent = activeProfile;
         document.getElementById('feedback-sender-email').value =
             activeProfile === 'guest@vectracore.ai' ? '' : activeProfile;
+
+        // --- Profile menu: shows the verified email, lets the user switch
+        // accounts (another email + verification code, or Google) ---
+        (function () {
+            const profileMenu = document.getElementById('profile-menu');
+            const profileBtn = document.getElementById('profile-btn');
+            const changeAccountBtn = document.getElementById('change-account-btn');
+            if (!profileMenu || !profileBtn || !changeAccountBtn) return;
+
+            function closeMenu() {
+                profileMenu.classList.remove('open');
+                profileBtn.setAttribute('aria-expanded', 'false');
+            }
+
+            profileBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = profileMenu.classList.toggle('open');
+                profileBtn.setAttribute('aria-expanded', String(isOpen));
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!profileMenu.contains(e.target)) closeMenu();
+            });
+
+            changeAccountBtn.addEventListener('click', () => {
+                // Clear the verified email so index.html doesn't think this
+                // browser is still signed in, then open its sign-in modal
+                // (email + code, or Google) straight away.
+                localStorage.removeItem('vectracore_user_email');
+                window.location.href = 'index.html?reauth=1';
+            });
+        })();
 
         const imageFileField = document.getElementById('user-uploaded-image');
         const fileLabelText = document.getElementById('file-title');
