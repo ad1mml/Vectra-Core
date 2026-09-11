@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VectraCore — Owner Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#08060d;--panel:#100b19;--line:#2d1941;--purple:#9b5cff;--purple2:#7c3aed;--text:#f7f2ff;--muted:#a99bb8;--shadow:0 20px 70px rgba(0,0,0,.35)}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Inter,system-ui,sans-serif;color:var(--text);background:radial-gradient(900px 500px at 15% -10%,rgba(155,92,255,.2),transparent 60%),radial-gradient(700px 500px at 100% 0,rgba(124,58,237,.13),transparent 55%),var(--bg)}
+button,input{font:inherit}button{cursor:pointer}.muted{color:var(--muted)}
+#login{min-height:100vh;display:grid;place-items:center;padding:24px}.login{width:min(420px,100%);padding:32px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(180deg,#160d22,#0e0915);box-shadow:var(--shadow)}
+.logo{font-size:27px;font-weight:800;letter-spacing:-.04em}.logo span{color:var(--purple)}
+.login h1{margin:20px 0 7px}.login input{width:100%;padding:14px;margin:20px 0 12px;border:1px solid #3a2052;border-radius:12px;background:#09060d;color:white;outline:none}.login input:focus{border-color:var(--purple)}
+.primary{width:100%;padding:13px;border:0;border-radius:12px;color:#fff;font-weight:700;background:linear-gradient(135deg,#a765ff,#7c3aed);box-shadow:0 10px 30px rgba(124,58,237,.28)}
+.error{height:20px;color:#ff8fa0;font-size:13px;margin-top:10px}
+#app{display:none;max-width:1500px;margin:auto;padding:28px 22px}.top{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:28px}.top small{color:var(--muted);font-weight:500}
+.actions{display:flex;gap:9px}.ghost{background:#120b1a;border:1px solid var(--line);color:#d7c9e4;padding:10px 13px;border-radius:11px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}.card{background:linear-gradient(180deg,rgba(22,13,34,.96),rgba(13,9,20,.96));border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.stat{padding:20px}.num{font-size:30px;font-weight:800;margin-top:8px}
+.tabs{display:flex;gap:5px;padding:7px;margin-bottom:18px}.tab{background:transparent;border:1px solid transparent;color:var(--muted);padding:10px 15px;border-radius:10px}.tab.active{color:#fff;border-color:#4b2870;background:rgba(155,92,255,.1)}
+.section{padding:21px}.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:15px}.section h2{margin:0;font-size:19px}.search{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#0a0710;color:#fff;min-width:250px}
+.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;min-width:850px}.table th,.table td{padding:12px;border-bottom:1px solid #21142e;text-align:left;white-space:nowrap}.table th{color:#b9a9c8;font-size:11px;text-transform:uppercase;letter-spacing:.08em}.table td{font-size:13px}
+.pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:rgba(155,92,255,.11);border:1px solid #4b2870;color:#d9c2ff;font-size:11px;font-weight:700}.feedback,.chat{padding:16px;border:1px solid var(--line);border-radius:14px;background:#0e0915;margin:10px 0}.time{font-size:11px;color:var(--muted);margin:5px 0 9px}.message,.turn-body{white-space:pre-wrap;line-height:1.55;word-break:break-word}.turn{margin-top:10px;padding:11px;border-radius:10px;background:#09060d;border:1px solid #21142e}.turn-meta{font-size:10px;color:#9d8cae;margin-bottom:5px}.empty{text-align:center;padding:30px;color:var(--muted)}
+@media(max-width:850px){.stats{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start;flex-direction:column}.search{min-width:0;width:100%}}
+</style>
+</head>
+<body>
+<div id="login">
+<form class="login" id="loginForm">
+<div class="logo">Vectra<span>Core</span></div>
+<h1>Owner Admin</h1>
+<div class="muted">Connected directly to your running app.py.</div>
+<input id="key" type="password" autocomplete="off" placeholder="Admin secret key" required>
+<button class="primary">Unlock dashboard</button>
+<div id="error" class="error"></div>
+</form>
+</div>
+
+<div id="app">
+<div class="top">
+<div><div class="logo">Vectra<span>Core</span> <small>OWNER ADMIN</small></div><div class="muted" style="margin-top:6px">Live data from app.py</div></div>
+<div class="actions"><button class="ghost" id="refresh">Refresh</button><button class="ghost" id="logout">Lock</button></div>
+</div>
+<div class="stats">
+<div class="card stat"><div class="muted">Users</div><div class="num" id="usersCount">—</div></div>
+<div class="card stat"><div class="muted">Pro / VIP</div><div class="num" id="paidCount">—</div></div>
+<div class="card stat"><div class="muted">Feedback</div><div class="num" id="feedbackCount">—</div></div>
+<div class="card stat"><div class="muted">Chat data</div><div class="num" id="chatCount">—</div></div>
+</div>
+<div class="card tabs">
+<button class="tab active" data-tab="users">Users</button>
+<button class="tab" data-tab="feedback">Feedback</button>
+<button class="tab" data-tab="chats">Chats</button>
+</div>
+<div id="content"></div>
+</div>
+
+<script>
+const state={key:"",users:[],feedback:[],chats:[]};
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function authHeaders(){return {"X-Admin-Key":state.key};}
+
+async function get(path){
+ const r=await fetch(path,{headers:authHeaders(),credentials:"same-origin"});
+ if(!r.ok) throw new Error(r.status===403?"Admin key rejected.":`Request failed (${r.status}).`);
+ return r;
+}
+
+async function load(){
+ /*
+  * These are the EXISTING app.py admin endpoints.
+  * No second Python server and no changes to app.py.
+  */
+ const [usersR,feedbackR]=await Promise.all([
+   get("/admin/users"),
+   get("/admin/feedback")
+ ]);
+ const usersText=await usersR.text();
+ const feedbackText=await feedbackR.text();
+
+ // Existing app.py renders these as HTML tables. Extract the table rows.
+ state.users=parseUsers(usersText);
+ state.feedback=parseFeedback(feedbackText);
+
+ // app.py currently does not expose chart_memory.json through an admin GET route.
+ // Therefore chats are shown only if a future/current app.py endpoint provides
+ // /admin/chats; otherwise we leave that section clearly marked.
+ try{
+   const chatsR=await get("/admin/chats");
+   const data=await chatsR.json();
+   state.chats=data.chats||data||[];
+ }catch(_){state.chats=[]}
+
+ $("#usersCount").textContent=state.users.length;
+ $("#paidCount").textContent=state.users.filter(u=>/^(pro|vip)$/i.test(u.plan)).length;
+ $("#feedbackCount").textContent=state.feedback.length;
+ $("#chatCount").textContent=state.chats.length || "—";
+ render(document.querySelector(".tab.active").dataset.tab);
+}
+
+function parseDoc(text){
+ return new DOMParser().parseFromString(text,"text/html");
+}
+function parseUsers(text){
+ const doc=parseDoc(text);
+ const rows=[...doc.querySelectorAll("table tr")].slice(1);
+ return rows.map(tr=>{
+   const cells=[...tr.querySelectorAll("td")].map(x=>x.textContent.trim());
+   return {email:cells[0]||"",plan:cells[1]||"default",registered_at:cells[2]||"",verified:cells[3]||"",subscription_status:cells[4]||"",auth_method:cells[5]||""};
+ }).filter(x=>x.email);
+}
+function parseFeedback(text){
+ const doc=parseDoc(text);
+ return [...doc.querySelectorAll("table tr")].slice(1).map(tr=>{
+   const c=[...tr.querySelectorAll("td")].map(x=>x.textContent.trim());
+   return {timestamp:c[0]||"",email:c[1]||"",message:c[2]||""};
+ }).filter(x=>x.email||x.message);
+}
+
+function render(tab){
+ if(tab==="users") renderUsers();
+ if(tab==="feedback") renderFeedback();
+ if(tab==="chats") renderChats();
+}
+function renderUsers(){
+ $("#content").innerHTML=`<div class="card section"><div class="section-head"><h2>Registered users</h2><input class="search" id="search" placeholder="Search users"></div><div id="list"></div></div>`;
+ const draw=()=>{const q=$("#search").value.toLowerCase();const a=state.users.filter(x=>JSON.stringify(x).toLowerCase().includes(q));
+ $("#list").innerHTML=a.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Plan</th><th>Registered</th><th>Verified</th><th>Subscription</th><th>Auth</th></tr></thead><tbody>${a.map(u=>`<tr><td>${esc(u.email)}</td><td><span class="pill">${esc(u.plan)}</span></td><td>${esc(u.registered_at)}</td><td>${esc(u.verified)}</td><td>${esc(u.subscription_status||"—")}</td><td>${esc(u.auth_method||"—")}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">No users found.</div>`};
+ $("#search").oninput=draw;draw();
+}
+function renderFeedback(){
+ $("#content").innerHTML=`<div class="card section"><div class="section-head"><h2>Feedback</h2><input class="search" id="search" placeholder="Search feedback"></div><div id="list"></div></div>`;
+ const draw=()=>{const q=$("#search").value.toLowerCase();const a=state.feedback.filter(x=>JSON.stringify(x).toLowerCase().includes(q));
+ $("#list").innerHTML=a.length?a.map(f=>`<div class="feedback"><b>${esc(f.email)}</b><div class="time">${esc(f.timestamp)}</div><div class="message">${esc(f.message)}</div></div>`).join(""):`<div class="empty">No feedback found.</div>`};
+ $("#search").oninput=draw;draw();
+}
+function renderChats(){
+ $("#content").innerHTML=`<div class="card section"><div class="section-head"><h2>Chats</h2><input class="search" id="search" placeholder="Search chats"></div><div id="list"></div></div>`;
+ if(!state.chats.length){$("#list").innerHTML=`<div class="empty">Your current app.py does not expose the stored chat_memory data through an admin endpoint yet.<br><br>Users and feedback above are live from the existing app.py endpoints.</div>`;return;}
+ const draw=()=>{const q=$("#search").value.toLowerCase();const a=state.chats.filter(x=>JSON.stringify(x).toLowerCase().includes(q));
+ $("#list").innerHTML=a.map(ch=>`<div class="chat"><b>${esc(ch.email||"Unknown")}</b><span class="pill">${esc(ch.plan||"default")}</span><div class="time">${esc(ch.title||"")} • ${esc(ch.updated_at||ch.created_at||"")}</div>${(ch.turns||[]).map(t=>`<div class="turn"><div class="turn-meta">${esc(t.role)} • ${esc(t.type)} • ${esc(t.timestamp)}</div><div class="turn-body">${esc(typeof t.content==="object"?JSON.stringify(t.content,null,2):t.content)}</div></div>`).join("")}</div>`).join("")||`<div class="empty">No chats found.</div>`};
+ $("#search").oninput=draw;draw();
+}
+
+function lock(){
+ state.key="";$("#app").style.display="none";$("#login").style.display="grid";$("#key").value="";
+}
+$("#loginForm").onsubmit=async e=>{
+ e.preventDefault();$("#error").textContent="";state.key=$("#key").value.trim();
+ try{
+   await get("/admin/users");
+   await load();
+   $("#login").style.display="none";$("#app").style.display="block";
+ }catch(err){state.key="";$("#error").textContent=err.message;}
+};
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");render(b.dataset.tab)});
+$("#refresh").onclick=()=>load().catch(e=>alert(e.message));
+$("#logout").onclick=lock;
+</script>
+</body>
+</html>
