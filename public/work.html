@@ -175,6 +175,82 @@
             border-color: var(--accent-color);
         }
 
+        .known-accounts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+
+        .known-account-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .known-account-item {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            text-align: left;
+            cursor: pointer;
+            overflow: hidden;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .known-account-item span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .known-account-item:hover {
+            background-color: rgba(139, 92, 246, 0.1);
+            border-color: var(--accent-color);
+        }
+
+        .known-account-avatar {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(139, 92, 246, 0.25);
+            color: #C4B5FD;
+            font-size: 0.72rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+        }
+
+        .known-account-remove {
+            flex-shrink: 0;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.85rem;
+            line-height: 1;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+        }
+
+        .known-account-remove:hover {
+            background-color: rgba(239, 68, 68, 0.12);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
         .workspace-container { display: flex; flex: 1; overflow: hidden; }
 
         .ai-inputs-panel {
@@ -1124,7 +1200,8 @@
                 <div class="profile-dropdown" id="profile-dropdown">
                     <div class="profile-dropdown-label">Signed in as</div>
                     <div class="profile-dropdown-email" id="profile-dropdown-email">guest@vectracore.ai</div>
-                    <button type="button" class="change-account-btn" id="change-account-btn">Change account</button>
+                    <div class="known-accounts-list" id="known-accounts-list"></div>
+                    <button type="button" class="change-account-btn" id="change-account-btn">Use another account</button>
                 </div>
             </div>
         </div>
@@ -1207,6 +1284,10 @@
         const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
 
         const activeProfile = (localStorage.getItem('vectracore_user_email') || 'guest@vectracore.ai').toLowerCase();
+        // NOTE: index.html must remember every successfully verified email
+        // (code or Google) into localStorage key 'vectracore_known_accounts'
+        // (a JSON array of email strings) so it shows up here for one-click
+        // switching. See index.html's requestCode/Google success handlers.
         let currentPlan = localStorage.getItem('vectracore_plan') || 'default';
         let sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
         let currentSessionId = null;
@@ -1215,13 +1296,71 @@
         document.getElementById('feedback-sender-email').value =
             activeProfile === 'guest@vectracore.ai' ? '' : activeProfile;
 
+        // --- Known accounts: every email this browser has successfully
+        // verified (via code or Google) gets remembered here by index.html.
+        // Lets "Change account" offer one-click switching instead of
+        // sending the user through verification again every time.
+        const KNOWN_ACCOUNTS_KEY = 'vectracore_known_accounts';
+
+        function getKnownAccounts() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(KNOWN_ACCOUNTS_KEY) || '[]');
+                return Array.isArray(raw) ? raw.filter(e => typeof e === 'string' && e) : [];
+            } catch {
+                return [];
+            }
+        }
+
+        function setKnownAccounts(list) {
+            localStorage.setItem(KNOWN_ACCOUNTS_KEY, JSON.stringify(list));
+        }
+
         // --- Profile menu: shows the verified email, lets the user switch
-        // accounts (another email + verification code, or Google) ---
+        // straight to any other account already verified on this browser,
+        // or add a brand new one (email + verification code, or Google) ---
         (function () {
             const profileMenu = document.getElementById('profile-menu');
             const profileBtn = document.getElementById('profile-btn');
             const changeAccountBtn = document.getElementById('change-account-btn');
-            if (!profileMenu || !profileBtn || !changeAccountBtn) return;
+            const knownAccountsList = document.getElementById('known-accounts-list');
+            if (!profileMenu || !profileBtn || !changeAccountBtn || !knownAccountsList) return;
+
+            function renderKnownAccounts() {
+                const others = getKnownAccounts().filter(e => e !== activeProfile);
+                knownAccountsList.innerHTML = '';
+                others.forEach((email) => {
+                    const row = document.createElement('div');
+                    row.className = 'known-account-row';
+
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'known-account-item';
+                    item.innerHTML = `<span class="known-account-avatar">${email.charAt(0)}</span><span>${email}</span>`;
+                    item.addEventListener('click', () => {
+                        // Already verified on this browser before — just
+                        // switch the active profile, no re-verification.
+                        localStorage.setItem('vectracore_user_email', email);
+                        window.location.reload();
+                    });
+
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'known-account-remove';
+                    removeBtn.setAttribute('aria-label', `Forget ${email}`);
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        setKnownAccounts(getKnownAccounts().filter(x => x !== email));
+                        renderKnownAccounts();
+                    });
+
+                    row.appendChild(item);
+                    row.appendChild(removeBtn);
+                    knownAccountsList.appendChild(row);
+                });
+            }
+
+            renderKnownAccounts();
 
             function closeMenu() {
                 profileMenu.classList.remove('open');
@@ -1239,9 +1378,10 @@
             });
 
             changeAccountBtn.addEventListener('click', () => {
-                // Clear the verified email so index.html doesn't think this
-                // browser is still signed in, then open its sign-in modal
-                // (email + code, or Google) straight away.
+                // Clear the active email (but keep the known-accounts list
+                // intact) so index.html doesn't think this browser is still
+                // signed in, then open its sign-in modal for a brand new
+                // email + code, or Google.
                 localStorage.removeItem('vectracore_user_email');
                 window.location.href = '/home/?reauth=1';
             });

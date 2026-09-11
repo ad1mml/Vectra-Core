@@ -1159,6 +1159,26 @@
         let pendingEmail = '';
         let resendCooldownInterval = null;
 
+        // --- Known accounts: every email verified on this browser (code or
+        // Google) is remembered here so work.html's "Change account" menu
+        // can offer one-click switching instead of full re-verification.
+        const KNOWN_ACCOUNTS_KEY = 'vectracore_known_accounts';
+        const MAX_KNOWN_ACCOUNTS = 6;
+
+        function rememberVerifiedAccount(email) {
+            const normalized = (email || '').trim().toLowerCase();
+            if (!normalized) return;
+            let list = [];
+            try {
+                const raw = JSON.parse(localStorage.getItem(KNOWN_ACCOUNTS_KEY) || '[]');
+                if (Array.isArray(raw)) list = raw.filter(e => typeof e === 'string' && e);
+            } catch {
+                list = [];
+            }
+            list = [normalized, ...list.filter(e => e !== normalized)].slice(0, MAX_KNOWN_ACCOUNTS);
+            localStorage.setItem(KNOWN_ACCOUNTS_KEY, JSON.stringify(list));
+        }
+
         function showStep(step) {
             stepEmail.style.display = step === 'email' ? 'block' : 'none';
             stepCode.style.display = step === 'code' ? 'block' : 'none';
@@ -1237,6 +1257,7 @@
                 }
                 localStorage.setItem('vectracore_user_email', result.email);
                 localStorage.setItem('vectracore_selected_plan', result.plan || selectedPlan);
+                rememberVerifiedAccount(result.email);
                 window.location.href = redirectTarget;
             } catch (err) {
                 emailErrorText.textContent = err.message;
@@ -1384,6 +1405,7 @@
                 // Verified — only now do we store the email and let them in.
                 localStorage.setItem('vectracore_user_email', pendingEmail);
                 localStorage.setItem('vectracore_selected_plan', result.plan || selectedPlan);
+                rememberVerifiedAccount(pendingEmail);
                 window.location.href = redirectTarget;
             } catch (err) {
                 codeErrorText.textContent = err.message;
