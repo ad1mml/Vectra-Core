@@ -1432,6 +1432,7 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/analyze-chart`, {
                     method: 'POST',
+                    credentials: 'include',
                     body: packet
                 });
 
@@ -1738,7 +1739,7 @@
                 return;
             }
             try {
-                const response = await fetch(`${API_BASE_URL}/usage?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
+                const response = await fetch(`${API_BASE_URL}/usage?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`, { credentials: 'include' });
                 updateCreditsBadge(await response.json());
             } catch (err) {
                 console.error('Failed to load chart-upload usage:', err);
@@ -1808,7 +1809,7 @@
                 return;
             }
             try {
-                const response = await fetch(`${API_BASE_URL}/sessions?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
+                const response = await fetch(`${API_BASE_URL}/sessions?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`, { credentials: 'include' });
                 if (response.status === 403) {
                     recentsBody.innerHTML = `<p class="recents-locked">Chat history &amp; recents are a <a href="/pricing/">Pro / VIP</a> feature.</p>`;
                     return;
@@ -1831,7 +1832,7 @@
             if (window.matchMedia('(max-width: 860px)').matches && typeof closeMobileSidebar === 'function') closeMobileSidebar();
 
             try {
-                const response = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(sessionId)}?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`);
+                const response = await fetch(`${API_BASE_URL}/session/${encodeURIComponent(sessionId)}?email=${encodeURIComponent(activeProfile)}&plan=${encodeURIComponent(currentPlan)}`, { credentials: 'include' });
                 if (!response.ok) throw new Error('Could not load session');
                 const session = await response.json();
 
@@ -1951,6 +1952,7 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/api/submit-feedback`, {
                     method: "POST",
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         email: senderEmail,
@@ -2018,7 +2020,7 @@
         // so it must never be trusted on its own for what the UI shows.
         (async function syncPlanFromServer() {
             try {
-                const response = await fetch(`${API_BASE_URL}/account?email=${encodeURIComponent(activeProfile)}`);
+                const response = await fetch(`${API_BASE_URL}/account?email=${encodeURIComponent(activeProfile)}`, { credentials: 'include' });
                 if (!response.ok) return;
                 const account = await response.json();
                 const confirmedPlan = account.plan || 'default';

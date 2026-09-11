@@ -166,6 +166,7 @@ async function createSubscriptionOnServer(planId){
   console.log('[VectraCore] Creating subscription via:', endpoint);
   const response = await fetch(endpoint, {
     method: 'POST',
+    credentials: 'include',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       email: email,
@@ -270,6 +271,7 @@ function renderPaypal(planId){
         try {
           const res = await fetch(API_BASE_URL + '/paypal/confirm-subscription', {
             method: 'POST',
+            credentials: 'include',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
               email: email,
@@ -301,7 +303,8 @@ function renderPaypal(planId){
       let accountConfirmed = false;
       try {
         const accountRes = await fetch(API_BASE_URL + '/account?email=' + encodeURIComponent(email), {
-          cache: 'no-store'
+          cache: 'no-store',
+          credentials: 'include'
         });
         const accountData = await accountRes.json().catch(() => ({}));
         accountConfirmed = accountRes.ok && accountData.plan === selected;

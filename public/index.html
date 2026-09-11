@@ -1214,6 +1214,7 @@
         async function requestCode(email) {
             const response = await fetch(`${API_BASE_URL}/send-verification-code`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     email,
@@ -1243,6 +1244,7 @@
             try {
                 const res = await fetch(`${API_BASE_URL}/google-signin`, {
                     method: 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         credential: response.credential,
@@ -1393,6 +1395,7 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/verify-code`, {
                     method: 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email: pendingEmail, code })
                 });

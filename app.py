@@ -85,13 +85,21 @@ if not ADMIN_SECRET_KEY:
     )
 
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY")  # powers /market-sentiment AND chat news lookups
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "https://www.vectracore.app,https://vectracore.app")
+ALLOWED_ORIGINS = os.environ.get(
+    "ALLOWED_ORIGINS",
+    "https://www.vectracore.app,https://vectracore.app,https://vectracore.pythonanywhere.com"
+)
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "").strip()
 # Backward-compatible fallback: derives a separate signing key from the existing
 # admin secret so deployment does not break if SESSION_SECRET_KEY is not yet set.
 if not SESSION_SECRET_KEY:
     SESSION_SECRET_KEY = hashlib.sha256(("vectracore-session:" + ADMIN_SECRET_KEY).encode()).hexdigest()
 SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() == "true"
+# SameSite=None cookies are rejected outright by browsers unless Secure is
+# also set — with the frontend/backend split domains here there is no
+# legitimate case where Secure should be off, so don't let an env var
+# accidentally combine the two into a cookie that silently never gets set.
+SESSION_COOKIE_SECURE = True
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 PLAN_CONFIG = {
     "default": {
@@ -228,11 +236,23 @@ app.config.update(
     SESSION_COOKIE_NAME="vectracore_session",
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
-    SESSION_COOKIE_SAMESITE="Lax",
+    # Frontend (vectracore.app) and backend (vectracore.pythonanywhere.com)
+    # are different origins, so this cookie travels cross-site on every
+    # fetch() from the frontend. "Lax" cookies are never sent on cross-site
+    # fetch/XHR — only "None" (with Secure, which SESSION_COOKIE_SECURE
+    # already forces in production) works here.
+    SESSION_COOKIE_SAMESITE="None",
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     MAX_CONTENT_LENGTH=8 * 1024 * 1024,
 )
-CORS(app, origins=ALLOWED_ORIGINS.split(",") if ALLOWED_ORIGINS != "*" else "*")
+# supports_credentials=True is required for the browser to store/send the
+# session cookie on cross-origin requests at all — without it, even a
+# perfectly configured SameSite=None cookie gets dropped by the browser.
+CORS(
+    app,
+    origins=ALLOWED_ORIGINS.split(",") if ALLOWED_ORIGINS != "*" else "*",
+    supports_credentials=True,
+)
 
 
 @app.after_request
