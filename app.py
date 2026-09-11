@@ -326,6 +326,65 @@ def serve_index():
     # static_folder config above, e.g. GET /pricing.html -> public/pricing.html.
     return app.send_static_file("index.html")
 
+
+# ---------------------------------------------------------------------------
+# Clean URLs — e.g. /pricing/ instead of /pricing.html. The underlying files
+# in public/ are untouched; these routes just serve them under a nicer path.
+# Old .html URLs are 301-redirected to their clean equivalent below so
+# existing bookmarks/links/search results don't break.
+# ---------------------------------------------------------------------------
+CLEAN_ROUTE_TO_FILE = {
+    "home": "index.html",
+    "terminal": "work.html",
+    "pricing": "pricing.html",
+    "billing": "billing.html",
+    "about-us": "about-us.html",
+    "contact-us": "contact-us.html",
+    "privacy-policy": "privacy-policy.html",
+    "refund-policy": "refund-policy.html",
+    "risk-disclosure": "risk-disclosure.html",
+    "terms-of-service": "terms-of-service.html",
+}
+
+for _slug, _filename in CLEAN_ROUTE_TO_FILE.items():
+    app.add_url_rule(
+        f"/{_slug}/",
+        endpoint=f"clean_{_slug}",
+        view_func=(lambda filename=_filename: app.send_static_file(filename)),
+    )
+
+
+@app.route("/blog/ai-trading-chart-analysis/")
+def clean_blog_ai_trading_chart_analysis():
+    return app.send_static_file("blog/ai-trading-chart-analysis.html")
+
+
+OLD_HTML_TO_CLEAN_URL = {
+    "index.html": "/home/",
+    "work.html": "/terminal/",
+    "pricing.html": "/pricing/",
+    "billing.html": "/billing/",
+    "about-us.html": "/about-us/",
+    "contact-us.html": "/contact-us/",
+    "privacy-policy.html": "/privacy-policy/",
+    "refund-policy.html": "/refund-policy/",
+    "risk-disclosure.html": "/risk-disclosure/",
+    "terms-of-service.html": "/terms-of-service/",
+}
+
+for _old_path, _new_path in OLD_HTML_TO_CLEAN_URL.items():
+    app.add_url_rule(
+        f"/{_old_path}",
+        endpoint=f"redirect_{_old_path.replace('.', '_')}",
+        view_func=(lambda new_path=_new_path: redirect(new_path, code=301)),
+    )
+
+
+@app.route("/blog/ai-trading-chart-analysis.html")
+def redirect_blog_ai_trading_chart_analysis_old():
+    return redirect("/blog/ai-trading-chart-analysis/", code=301)
+
+
 logging.basicConfig(level=logging.INFO)
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -1805,7 +1864,7 @@ def create_paypal_subscription():
         "application_context": {
             "brand_name": "VectraCore", "locale": "en-US", "shipping_preference": "NO_SHIPPING",
             "user_action": "SUBSCRIBE_NOW", "return_url": f"{base_url}/payment-success",
-            "cancel_url": f"{base_url}/pricing.html",
+            "cancel_url": f"{base_url}/pricing/",
         },
     }
     try:
