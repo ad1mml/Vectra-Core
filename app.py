@@ -2294,6 +2294,55 @@ def switch_account():
     return jsonify({"status": "success", "email": target, "plan": effective_plan}), 200
 
 
+@app.route("/select-plan", methods=["POST"])
+def select_plan():
+    """Records which plan the signed-in user picked on billing.html.
+
+    billing.html no longer goes through PayPal — it just lets the user pick
+    Pro/VIP and continue. Without this endpoint that choice only ever lived
+    in the browser's localStorage, so work.html's own /account re-check on
+    every page load (which exists to stop a stale plan from lingering after
+    an account switch) would immediately overwrite it back to "default".
+    This makes the plan stick by writing it to users.json, the same way
+    /admin/grant-access already comps free access — just self-service, tied
+    to the caller's own authenticated session, and with no admin key needed.
+
+    This never talks to PayPal and never creates a real charge.
+    """
+    email, auth_error = _require_authenticated_email()
+    if auth_error:
+        return auth_error
+
+    data = request.get_json(silent=True) or {}
+    plan = (data.get("plan") or "").strip().lower()
+    if plan not in VALID_PLANS:
+        return jsonify({"error": "plan must be one of: " + ", ".join(VALID_PLANS)}), 400
+
+    if _rate_limited("select-plan", 20, 600, email):
+        return jsonify({"error": "Too many plan changes. Please try again later."}), 429
+
+    with _users_lock:
+        users = _load_json(USERS_FILE, {})
+        account = users.get(email, {"registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        account["verified"] = True
+        account["plan"] = plan
+        # Distinguishes a user picking their own plan for free (no payment
+        # processor wired up yet) from an owner-granted "comped" freebie —
+        # keep them separate in users.json/admin/users for later reference.
+        account["self_selected"] = plan != "default"
+        if plan != "default":
+            account["subscription_status"] = "ACTIVE"
+            account["paypal_subscription_id"] = None
+            account["paypal_plan_id"] = None
+        else:
+            account["subscription_status"] = None
+        account["subscription_updated_at"] = datetime.utcnow().isoformat()
+        users[email] = account
+        _save_json(USERS_FILE, users)
+
+    return jsonify({"status": "success", "email": email, "plan": plan}), 200
+
+
 @app.route("/usage", methods=["GET"])
 def get_usage_route():
     """Lets the frontend show 'X/20 charts used this month' and a countdown
