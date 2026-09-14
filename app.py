@@ -3256,9 +3256,43 @@ answer any part of their question that's about the chart/technical
 picture.
 """
 
+            # Same gap as news had, same fix: market data was wired into
+            # Mode 1 and Mode 3 but never into Mode 2 (follow-up), which is
+            # the most common real path — so it was answering "no access"
+            # to any asset question that wasn't the exact active chart.
+            # Detect a symbol in the follow-up question itself (not the
+            # active chart's own symbol) so asking about a DIFFERENT asset
+            # (e.g. "what about EURUSD") still gets real data.
+            followup_market_data_block = ""
+            if plan in ("pro", "vip"):
+                followup_symbol = _detect_symbol(question)
+                if followup_symbol:
+                    followup_candles = _fetch_ohlcv(
+                        followup_symbol, interval="15min", outputsize=100
+                    )
+                    if followup_candles:
+                        followup_summary = _summarize_ohlcv(followup_candles)
+                        followup_market_data_block = _format_market_data_block(
+                            followup_symbol, "15min", followup_summary
+                        )
+                    else:
+                        followup_market_data_block = f"""
+==========================================================
+LIVE MARKET DATA — {followup_symbol}
+==========================================================
+
+Live price data for {followup_symbol} could not be fetched right now
+(provider error, TWELVE_DATA key missing, or the symbol isn't
+supported). Tell the user plainly that live data isn't available for
+this asset right now rather than guessing or inventing prices — but
+still answer any part of their question that's about the active
+chart.
+"""
+
             FOLLOWUP_PROMPT = f"""
 {FOLLOWUP_PROMPT_BASE}
 {followup_news_block}
+{followup_market_data_block}
 ==========================================================
 CURRENT ACTIVE CHART
 ==========================================================
