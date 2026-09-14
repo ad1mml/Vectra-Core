@@ -85,6 +85,7 @@ if not ADMIN_SECRET_KEY:
     )
 
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY")  # powers /market-sentiment AND chat news lookups
+TWELVE_DATA_KEY = os.environ.get("TWELVE_DATA")  # powers live OHLCV price/chart lookups
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
     "https://www.vectracore.app,https://vectracore.app,https://vectracore.pythonanywhere.com"
@@ -1320,6 +1321,117 @@ def _format_news_for_prompt(items):
         summary = f" — {n['summary']}" if n.get("summary") else ""
         lines.append(f"- {prefix}{n['headline']}{source}{summary}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Live market data helpers (Twelve Data)
+# ---------------------------------------------------------------------------
+_ohlcv_cache = {}  # key: (symbol, interval) -> {"fetched_at": dt, "candles": [...]}
+OHLCV_CACHE_TTL_SECONDS = 45
+
+# Matches common forex/metal/crypto pairs typed in plain English questions,
+# e.g. "XAUUSD", "EUR/USD", "BTCUSDT", "avaxusd".
+_SYMBOL_PATTERN = re.compile(
+    r"\b([A-Z]{3,5})\s*/?\s*(USD|USDT|EUR|JPY|GBP|BTC)\b"
+)
+
+
+def _detect_symbol(text: str):
+    """Best-effort extraction of a tradable symbol from a free-text question.
+    Returns a Twelve Data-formatted symbol string (e.g. 'XAU/USD') or None."""
+    match = _SYMBOL_PATTERN.search(text.upper())
+    if not match:
+        return None
+    base, quote = match.group(1), match.group(2)
+    if base == quote:
+        return None
+    return f"{base}/{quote}"
+
+
+def _fetch_ohlcv(symbol: str, interval="15min", outputsize=100):
+    """Fetch recent candles from Twelve Data, with a short in-memory cache.
+    Returns a list of candle dicts oldest->newest, or None if unavailable."""
+    if not TWELVE_DATA_KEY:
+        return None
+
+    cache_key = (symbol, interval)
+    now = datetime.now()
+    cached = _ohlcv_cache.get(cache_key)
+    if (
+        cached is not None
+        and (now - cached["fetched_at"]).total_seconds() < OHLCV_CACHE_TTL_SECONDS
+    ):
+        return cached["candles"]
+
+    try:
+        resp = requests.get(
+            "https://api.twelvedata.com/time_series",
+            params={
+                "symbol": symbol,
+                "interval": interval,
+                "outputsize": outputsize,
+                "apikey": TWELVE_DATA_KEY,
+            },
+            timeout=8,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        values = payload.get("values")
+        if not values:
+            app.logger.error("Twelve Data fetch failed for %s: %s", symbol, payload)
+            return None
+
+        candles = list(reversed(values))  # API returns newest-first
+        _ohlcv_cache[cache_key] = {"fetched_at": now, "candles": candles}
+        return candles
+
+    except requests.RequestException as e:
+        app.logger.error("Twelve Data fetch failed for %s: %s", symbol, e)
+        return None
+
+
+def _summarize_ohlcv(candles):
+    """Reduce a candle list to a compact dict — this is what actually goes
+    into the prompt, never the raw candle list (keeps token cost low)."""
+    closes = [float(c["close"]) for c in candles]
+    highs = [float(c["high"]) for c in candles]
+    lows = [float(c["low"]) for c in candles]
+
+    change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100 if closes[0] else 0
+    if closes[-1] > closes[0]:
+        trend = "short-term uptrend"
+    elif closes[-1] < closes[0]:
+        trend = "short-term downtrend"
+    else:
+        trend = "flat / ranging"
+
+    return {
+        "current_price": closes[-1],
+        "period_high": max(highs),
+        "period_low": min(lows),
+        "change_pct": round(change_pct, 2),
+        "trend": trend,
+        "candle_count": len(candles),
+        "last_timestamp": candles[-1].get("datetime"),
+    }
+
+
+def _format_market_data_block(symbol, interval, summary):
+    return f"""
+==========================================================
+LIVE MARKET DATA — {symbol} (real, fetched just now)
+==========================================================
+
+Current price: {summary['current_price']}
+Recent range ({summary['candle_count']} x {interval} candles): high {summary['period_high']} / low {summary['period_low']}
+Change over this window: {summary['change_pct']}%
+Short-term trend: {summary['trend']}
+Last candle: {summary['last_timestamp']} (UTC)
+
+Treat the above as real, current, and correct. Use it to answer the
+user's question about this asset's price action. Do not claim you lack
+live price/chart access when this section is present.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -2905,9 +3017,37 @@ primarily on technical evidence and say so if the user asks about
 news specifically.
 """
 
+            # Same idea, for live price data: VIP only, same as news above.
+            # We can only fetch a live quote if we know the asset before
+            # the model reads the chart — so this only fires when the user
+            # named the asset in their caption. Otherwise the model still
+            # reads the chart purely visually, as before.
+            chart_market_data_block = ""
+            if plan == "vip":
+                caption_symbol = _detect_symbol(question)
+                if caption_symbol:
+                    caption_candles = _fetch_ohlcv(
+                        caption_symbol, interval="15min", outputsize=100
+                    )
+                    if caption_candles:
+                        caption_summary = _summarize_ohlcv(caption_candles)
+                        chart_market_data_block = _format_market_data_block(
+                            caption_symbol, "15min", caption_summary
+                        ).replace(
+                            "Use it to answer the user's question about "
+                            "this asset's price action.",
+                            "Use it to cross-check the price level you read "
+                            "directly off the uploaded chart — if they "
+                            "disagree meaningfully, trust the chart image "
+                            "for current_price (per the Price-Grounding "
+                            "Protocol) and mention the discrepancy plainly "
+                            "rather than silently picking one.",
+                        )
+
             SYSTEM_PROMPT = f"""
 {ACTIVE_PROMPT}
 {chart_news_block}
+{chart_market_data_block}
 ==========================================================
 USER PLAN
 ==========================================================
@@ -3290,9 +3430,37 @@ news isn't available right now rather than guessing or inventing
 headlines.
 """
 
+        # Same plan gating as news: default stays technical-only, per
+        # default_prompt.py's explicit out-of-scope section. Pro/VIP get
+        # live price data injected the same way they get live news.
+        market_data_block = ""
+
+        if plan in ("pro", "vip"):
+            detected_symbol = _detect_symbol(question)
+
+            if detected_symbol:
+                candles = _fetch_ohlcv(detected_symbol, interval="15min", outputsize=100)
+                if candles:
+                    summary = _summarize_ohlcv(candles)
+                    market_data_block = _format_market_data_block(
+                        detected_symbol, "15min", summary
+                    )
+                else:
+                    market_data_block = f"""
+==========================================================
+LIVE MARKET DATA — {detected_symbol}
+==========================================================
+
+Live price data for {detected_symbol} could not be fetched right now
+(provider error, TWELVE_DATA key missing, or the symbol isn't supported).
+Tell the user plainly that live data isn't available for this asset
+right now rather than guessing or inventing prices.
+"""
+
         GENERAL_PROMPT = f"""
 {ACTIVE_PROMPT}
 {news_context_block}
+{market_data_block}
 ==========================================================
 USER MESSAGE
 ==========================================================
