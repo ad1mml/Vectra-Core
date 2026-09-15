@@ -25,8 +25,14 @@ Setup:
        Gmail, use an App Password (not your normal password) as
        SMTP_PASSWORD. Without these set, signup will fail with a clear
        502 instead of silently skipping verification.
-    5. pip install -r requirements.txt
-    6. python app.py
+    5. fill in LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_STORE_ID,
+       LEMONSQUEEZY_WEBHOOK_SECRET, LEMONSQUEEZY_PRO_CHECKOUT_URL, and
+       LEMONSQUEEZY_VIP_CHECKOUT_URL so Pro/VIP checkout and the
+       /webhooks/lemonsqueezy subscription webhook work. Without these,
+       billing.html can't send users to checkout and paid access can never
+       actually turn on.
+    6. pip install -r requirements.txt
+    7. python app.py
 """
 
 import os
@@ -40,6 +46,7 @@ import time
 import logging
 import secrets
 import hashlib
+import hmac
 import uuid
 import threading
 from collections import defaultdict, deque
@@ -203,27 +210,22 @@ FROM_NAME = os.environ.get("FROM_NAME", "VectraCore")
 #      same value in the frontend's GOOGLE_CLIENT_ID constant
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 
-# PayPal Subscriptions. The client secret is server-only and must be supplied
-# through PAYPAL_CLIENT_SECRET; never expose it to the browser.
-PAYPAL_MODE = os.environ.get("PAYPAL_MODE", "live").strip().lower()
-if PAYPAL_MODE not in {"live", "sandbox"}:
-    raise RuntimeError("PAYPAL_MODE must be either 'live' or 'sandbox'.")
-# NOTE: these must be rotated in the PayPal developer dashboard — the old
-# values were committed to source as hardcoded fallbacks and must be
-# treated as compromised. No default is provided anymore; set these in
-# your PythonAnywhere environment / .env instead.
-PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
-PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
-PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "").strip()
-PAYPAL_PLAN_IDS = {
-    "pro_monthly": "P-6R376963A16807448NKQ2RLA",
-    "vip_monthly": "P-6XG61705DE291753SNKQ2STA",
+# Lemon Squeezy Subscriptions. LEMONSQUEEZY_API_KEY is only needed if you
+# later call the Lemon Squeezy REST API (e.g. to cancel a subscription from
+# the admin panel) — the checkout + webhook flow below doesn't require it.
+# It is still server-only and must never be exposed to the browser.
+LEMONSQUEEZY_API_KEY = os.environ.get("LEMONSQUEEZY_API_KEY", "").strip()
+LEMONSQUEEZY_STORE_ID = os.environ.get("LEMONSQUEEZY_STORE_ID", "").strip()
+# Used to verify the HMAC signature Lemon Squeezy sends on every webhook
+# request (X-Signature header) — never trust an unverified webhook body.
+LEMONSQUEEZY_WEBHOOK_SECRET = os.environ.get("LEMONSQUEEZY_WEBHOOK_SECRET", "").strip()
+# Hosted checkout URLs for each paid tier, from your Lemon Squeezy store.
+# The frontend appends ?checkout[email]=...&checkout[custom][tier]=pro (etc.)
+# to these at click time — see /lemonsqueezy/config below.
+LEMONSQUEEZY_CHECKOUT_URLS = {
+    "pro": os.environ.get("LEMONSQUEEZY_PRO_CHECKOUT_URL", "").strip(),
+    "vip": os.environ.get("LEMONSQUEEZY_VIP_CHECKOUT_URL", "").strip(),
 }
-PAYPAL_PLAN_TO_TIER = {
-    PAYPAL_PLAN_IDS["pro_monthly"]: "pro",
-    PAYPAL_PLAN_IDS["vip_monthly"]: "vip",
-}
-PAYPAL_API_BASE = "https://api-m.paypal.com" if PAYPAL_MODE == "live" else "https://api-m.sandbox.paypal.com"
 
 VERIFICATION_CODE_TTL_SECONDS = 600       # code valid for 10 minutes
 VERIFICATION_MAX_ATTEMPTS = 5              # wrong guesses allowed before the code is killed
@@ -556,8 +558,8 @@ def _save_json(path, data):
 # entry -> write-the-whole-file-back dance, with no locking. The webhook
 # handler in particular fires this from a background thread
 # (threading.Thread(target=_process_async...)) specifically so it can ack
-# PayPal fast, which means it can easily overlap with a concurrent
-# create_paypal_subscription, admin_grant_access, or /register call.
+# Lemon Squeezy fast, which means it can easily overlap with a concurrent
+# admin_grant_access or /register call.
 #
 # Without a lock, two overlapping load->modify->save cycles are a classic
 # lost-update race: whichever one calls _save_json last wins and silently
@@ -865,80 +867,28 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
 
 
 # ---------------------------------------------------------------------------
-# PayPal subscription helpers
+# Lemon Squeezy subscription helpers
 # ---------------------------------------------------------------------------
-def _paypal_access_token():
-    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
-        raise RuntimeError("PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.")
-    try:
-        r = requests.post(
-            f"{PAYPAL_API_BASE}/v1/oauth2/token",
-            auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
-            headers={"Accept": "application/json", "Accept-Language": "en_US"},
-            data={"grant_type": "client_credentials"}, timeout=15,
-        )
-    except requests.RequestException as exc:
-        app.logger.error("PayPal OAuth network error (%s): %s", PAYPAL_MODE, exc)
-        raise RuntimeError("Could not connect to PayPal.") from exc
-
-    try:
-        payload = r.json() if r.content else {}
-    except ValueError:
-        payload = {}
-
-    if r.status_code >= 300:
-        # Never log the client secret or Authorization header. PayPal normally
-        # supplies a useful error name/debug_id that is safe to log.
-        app.logger.error(
-            "PayPal OAuth failed (%s): HTTP %s name=%s debug_id=%s message=%s",
-            PAYPAL_MODE, r.status_code, payload.get("name"),
-            payload.get("debug_id"), payload.get("message") or r.text[:300],
-        )
-        raise RuntimeError("PayPal authentication failed.")
-
-    token = payload.get("access_token")
-    if not token:
-        app.logger.error("PayPal OAuth returned HTTP %s without an access token.", r.status_code)
-        raise RuntimeError("PayPal did not return an access token.")
-    return token
-
-
-def _paypal_request(method, path, json_body=None):
-    token = _paypal_access_token()
-    return requests.request(
-        method, f"{PAYPAL_API_BASE}{path}",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json", "Content-Type": "application/json"},
-        json=json_body, timeout=20,
-    )
-
-
-def _paypal_plan_key(plan):
-    value = (plan or "").strip().lower().replace("-", "_").replace(" ", "_")
-    return {
-        "pro": "pro_monthly", "monthly_pro": "pro_monthly",
-        "vip": "vip_monthly", "monthly_vip": "vip_monthly",
-    }.get(value, value)
-
-
 def _effective_plan_for_email(email, requested_plan="default"):
     # Browser-supplied plan values are never trusted for paid access.
-    # For an ACTIVE PayPal subscription, derive the tier from the stored
-    # PayPal plan ID first. That prevents a stale/overwritten `account["plan"]`
-    # value such as "default" from masking a real Pro/VIP subscription.
+    # For an ACTIVE Lemon Squeezy subscription, derive the tier from the
+    # stored lemonsqueezy_tier first. That prevents a stale/overwritten
+    # `account["plan"]` value such as "default" from masking a real
+    # Pro/VIP subscription.
     email = (email or "").strip().lower()
     users = _load_json(USERS_FILE, {})
     account = users.get(email, {})
     if account.get("subscription_status") == "ACTIVE":
-        paypal_tier = PAYPAL_PLAN_TO_TIER.get(account.get("paypal_plan_id"))
-        if paypal_tier in ("pro", "vip"):
-            return paypal_tier
+        ls_tier = account.get("lemonsqueezy_tier")
+        if ls_tier in ("pro", "vip"):
+            return ls_tier
         if account.get("plan") in ("pro", "vip"):
             return account["plan"]
     # Never grant paid access from a browser-supplied requested_plan.
     return "default"
 
 
-def _set_subscription_state(email, status, subscription_id=None, plan_id=None, event_type=None):
+def _set_subscription_state(email, status, subscription_id=None, tier=None, event_type=None):
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -946,111 +896,97 @@ def _set_subscription_state(email, status, subscription_id=None, plan_id=None, e
         users = _load_json(USERS_FILE, {})
         account = users.get(email, {"plan": "default", "verified": True})
         status = (status or "").upper()
-        tier = PAYPAL_PLAN_TO_TIER.get(plan_id)
         account["subscription_status"] = status
         if subscription_id:
-            account["paypal_subscription_id"] = subscription_id
-        if plan_id:
-            account["paypal_plan_id"] = plan_id
+            account["lemonsqueezy_subscription_id"] = subscription_id
+        if tier:
+            account["lemonsqueezy_tier"] = tier
         if event_type:
-            account["last_paypal_event"] = event_type
+            account["last_lemonsqueezy_event"] = event_type
         account["subscription_updated_at"] = datetime.utcnow().isoformat()
         if status == "ACTIVE" and tier:
             account["plan"] = tier
-        elif status in {"CANCELLED", "EXPIRED", "SUSPENDED", "REVOKED"}:
+        elif status in {"CANCELLED", "EXPIRED", "SUSPENDED", "REVOKED", "PAUSED", "UNPAID", "PAST_DUE"}:
             account["plan"] = "default"
         users[email] = account
         _save_json(USERS_FILE, users)
         return account
 
 
-def _verify_paypal_webhook(headers, event):
-    required = {
-        "transmission_id": headers.get("PAYPAL-TRANSMISSION-ID"),
-        "transmission_time": headers.get("PAYPAL-TRANSMISSION-TIME"),
-        "cert_url": headers.get("PAYPAL-CERT-URL"),
-        "auth_algo": headers.get("PAYPAL-AUTH-ALGO"),
-        "transmission_sig": headers.get("PAYPAL-TRANSMISSION-SIG"),
-    }
-    missing = [key for key, value in required.items() if not value]
-    if not PAYPAL_WEBHOOK_ID:
-        app.logger.error("PayPal webhook verification unavailable: PAYPAL_WEBHOOK_ID is missing.")
+def _verify_lemonsqueezy_webhook(raw_body: bytes, signature_header: str) -> bool:
+    """Lemon Squeezy signs every webhook body with HMAC-SHA256 using your
+    webhook secret, sent in the X-Signature header as a hex digest. Always
+    verify against the *raw* request body (not the re-serialized JSON) —
+    re-serializing can change whitespace/key order and break the digest."""
+    if not LEMONSQUEEZY_WEBHOOK_SECRET or not signature_header:
+        app.logger.error("Lemon Squeezy webhook verification unavailable: missing secret or signature header.")
         return False
-    if missing:
-        app.logger.error("PayPal webhook verification unavailable: missing headers %s", ", ".join(missing))
-        return False
-
-    try:
-        r = _paypal_request("POST", "/v1/notifications/verify-webhook-signature", {
-            **required, "webhook_id": PAYPAL_WEBHOOK_ID, "webhook_event": event,
-        })
-    except Exception:
-        app.logger.exception("PayPal webhook verification request failed (mode=%s).", PAYPAL_MODE)
-        return False
-
-    try:
-        payload = r.json() if r.content else {}
-    except ValueError:
-        payload = {}
-    verified = r.status_code < 300 and payload.get("verification_status") == "SUCCESS"
-    if not verified:
-        app.logger.error(
-            "PayPal webhook verification rejected: HTTP %s status=%s name=%s debug_id=%s message=%s event_id=%s event_type=%s",
-            r.status_code, payload.get("verification_status"), payload.get("name"),
-            payload.get("debug_id"), payload.get("message") or r.text[:300],
-            event.get("id"), event.get("event_type"),
-        )
-    return verified
+    digest = hmac.new(LEMONSQUEEZY_WEBHOOK_SECRET.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(digest, signature_header.strip())
 
 
-PAYPAL_EVENTS_FILE = os.path.join(DATA_DIR, "paypal_events.json")
-_paypal_events_lock = threading.Lock()
+LEMONSQUEEZY_EVENTS_FILE = os.path.join(DATA_DIR, "lemonsqueezy_events.json")
+_lemonsqueezy_events_lock = threading.Lock()
 
-def _claim_paypal_event(event_id):
-    """Atomically mark a PayPal event as processed/claimed to prevent duplicates."""
-    if not event_id:
+def _claim_lemonsqueezy_event(event_key):
+    """Atomically mark a Lemon Squeezy webhook delivery as processed/claimed
+    to prevent duplicates (Lemon Squeezy retries on any non-2xx response, and
+    can otherwise redeliver the same event more than once)."""
+    if not event_key:
         return True
-    with _paypal_events_lock:
-        events = _load_json(PAYPAL_EVENTS_FILE, {})
-        if event_id in events:
+    with _lemonsqueezy_events_lock:
+        events = _load_json(LEMONSQUEEZY_EVENTS_FILE, {})
+        if event_key in events:
             return False
-        events[event_id] = {"status": "processed", "received_at": datetime.utcnow().isoformat()}
-        _save_json(PAYPAL_EVENTS_FILE, events)
+        events[event_key] = {"status": "processed", "received_at": datetime.utcnow().isoformat()}
+        _save_json(LEMONSQUEEZY_EVENTS_FILE, events)
         return True
 
 
-def _handle_paypal_webhook(event):
-    event_type = (event.get("event_type") or "").upper()
-    resource = event.get("resource") or {}
-    if event_type.startswith("PAYMENT."):
-        return {"handled": True, "access_changed": False}
+def _handle_lemonsqueezy_webhook(payload):
+    """Handles the `subscription_*` webhook events. Tier and the owning
+    email both come from `meta.custom_data`, which the checkout URL was
+    built with (see /lemonsqueezy/config and billing.html) — Lemon
+    Squeezy echoes custom_data back on every webhook for that subscription,
+    so we never have to guess the tier from a variant ID."""
+    meta = payload.get("meta") or {}
+    event_name = (meta.get("event_name") or "").strip().lower()
+    custom_data = meta.get("custom_data") or {}
+    data = payload.get("data") or {}
+    attributes = data.get("attributes") or {}
 
-    sub_id = resource.get("id")
-    plan_id = resource.get("plan_id")
-    status = (resource.get("status") or "").upper()
-    email = ((resource.get("subscriber") or {}).get("email_address") or "").strip().lower()
+    sub_id = data.get("id")
+    status = (attributes.get("status") or "").upper()
+    email = (custom_data.get("email") or attributes.get("user_email") or "").strip().lower()
+    tier = (custom_data.get("tier") or "").strip().lower()
+    if tier not in ("pro", "vip"):
+        tier = None
+
     if not email and sub_id:
         with _users_lock:
             users = _load_json(USERS_FILE, {})
         for candidate, account in users.items():
-            if account.get("paypal_subscription_id") == sub_id:
+            if account.get("lemonsqueezy_subscription_id") == sub_id:
                 email = candidate
                 break
 
-    active = {"BILLING.SUBSCRIPTION.ACTIVATED", "BILLING.SUBSCRIPTION.RE-ACTIVATED", "BILLING.SUBSCRIPTION.UPDATED"}
-    inactive = {"BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED", "BILLING.SUBSCRIPTION.SUSPENDED", "BILLING.SUBSCRIPTION.REVOKED"}
-    if event_type in active:
-        tier = PAYPAL_PLAN_TO_TIER.get(plan_id)
-        if not tier:
+    if not event_name.startswith("subscription_"):
+        # subscription_payment_success / subscription_payment_failed and
+        # anything order-related don't change plan entitlement by themselves.
+        return {"handled": True, "access_changed": False}
+
+    active_statuses = {"ACTIVE", "ON_TRIAL"}
+    if status in active_statuses:
+        if not (email and tier):
             return {"handled": False, "access_changed": False}
-        if email:
-            _set_subscription_state(email, "ACTIVE", sub_id, plan_id, event_type)
-        return {"handled": True, "access_changed": bool(email)}
-    if event_type in inactive:
-        if email:
-            _set_subscription_state(email, status or event_type.rsplit(".", 1)[-1], sub_id, plan_id, event_type)
-        return {"handled": True, "access_changed": bool(email)}
-    return {"handled": True, "access_changed": False}
+        _set_subscription_state(email, "ACTIVE", sub_id, tier, event_name)
+        return {"handled": True, "access_changed": True}
+
+    # Anything else (cancelled, expired, paused, unpaid, past_due) drops
+    # the account back to the default plan.
+    if email:
+        _set_subscription_state(email, status or event_name.rsplit("_", 1)[-1], sub_id, tier, event_name)
+    return {"handled": True, "access_changed": bool(email)}
 
 
 # ---------------------------------------------------------------------------
@@ -1954,171 +1890,65 @@ def _no_na_walk(node, decision):
 # Routes
 # ---------------------------------------------------------------------------
 
-@app.route("/paypal/config", methods=["GET"])
-def paypal_config():
+@app.route("/lemonsqueezy/config", methods=["GET"])
+def lemonsqueezy_config():
+    """Safe-to-expose config for the frontend: just the hosted checkout URLs.
+    The API key, store ID, and webhook secret never leave the server."""
+    email = _authenticated_email()
     return jsonify({
-        "mode": PAYPAL_MODE,
-        "client_id": PAYPAL_CLIENT_ID,
-        "plans": PAYPAL_PLAN_IDS,
+        "checkout_urls": LEMONSQUEEZY_CHECKOUT_URLS,
+        "email": email,
     }), 200
 
 
-@app.route("/paypal/create-subscription", methods=["POST"])
-@app.route("/create-subscription", methods=["POST"])
-def create_paypal_subscription():
-    if not PAYPAL_CLIENT_SECRET:
-        return jsonify({"error": "PayPal payments are not configured on the server."}), 503
-    data = request.get_json(silent=True) or {}
-    email, auth_error = _require_authenticated_email()
-    if auth_error:
-        return auth_error
-    requested_plan = data.get("plan") or data.get("plan_key") or ""
-    if not email or not _valid_email(email):
-        return jsonify({"error": "A valid email is required."}), 400
-    plan_key = _paypal_plan_key(requested_plan)
-    plan_id = PAYPAL_PLAN_IDS.get(plan_key)
-    if not plan_id:
-        return jsonify({"error": "Invalid plan.", "available_plans": list(PAYPAL_PLAN_IDS)}), 400
+@app.route("/webhooks/lemonsqueezy", methods=["POST"])
+@app.route("/lemonsqueezy/webhook", methods=["POST"])
+def lemonsqueezy_webhook():
+    if not LEMONSQUEEZY_WEBHOOK_SECRET:
+        return jsonify({"error": "Lemon Squeezy webhook verification is not configured."}), 503
 
-    with _users_lock:
-        users = _load_json(USERS_FILE, {})
-        account = users.get(email)
-    if not account or not account.get("verified"):
-        return jsonify({"error": "Verify your email and create your VectraCore account before subscribing."}), 403
-    if account.get("subscription_status") == "ACTIVE" and account.get("paypal_subscription_id"):
-        return jsonify({"error": "This account already has an active subscription.", "plan": account.get("plan", "default")}), 409
+    raw_body = request.get_data()
+    signature = request.headers.get("X-Signature", "")
 
-    base_url = request.url_root.rstrip("/")
-    body = {
-        "plan_id": plan_id,
-        "subscriber": {"email_address": email},
-        "custom_id": email,
-        "application_context": {
-            "brand_name": "VectraCore", "locale": "en-US", "shipping_preference": "NO_SHIPPING",
-            "user_action": "SUBSCRIBE_NOW", "return_url": f"{base_url}/payment-success",
-            "cancel_url": f"{base_url}/pricing/",
-        },
-    }
-    try:
-        r = _paypal_request("POST", "/v1/billing/subscriptions", body)
-        payload = r.json() if r.content else {}
-    except Exception as exc:
-        app.logger.exception("PayPal subscription creation failed")
-        return jsonify({"error": "Could not connect to PayPal."}), 502
-    if r.status_code >= 300:
-        app.logger.error("PayPal create subscription failed: %s %s", r.status_code, r.text[:1000])
-        return jsonify({"error": "PayPal could not create the subscription.", "paypal": payload}), 502
-
-    subscription_id = payload.get("id")
-    approval_url = next((x.get("href") for x in payload.get("links", []) if x.get("rel") in ("approve", "payer-action")), None)
-    with _users_lock:
-        # Re-load rather than reuse the earlier snapshot — another writer
-        # (e.g. the webhook thread) may have changed users.json while we
-        # were waiting on the PayPal API call above.
-        users = _load_json(USERS_FILE, {})
-        account = users.get(email, account)
-        account["paypal_subscription_id"] = subscription_id
-        account["paypal_plan_id"] = plan_id
-        account["subscription_status"] = "APPROVAL_PENDING"
-        account["subscription_updated_at"] = datetime.utcnow().isoformat()
-        users[email] = account
-        _save_json(USERS_FILE, users)
-    return jsonify({
-        "success": True, "subscription_id": subscription_id, "plan": PAYPAL_PLAN_TO_TIER[plan_id],
-        "plan_key": plan_key, "plan_id": plan_id, "approval_url": approval_url, "status": payload.get("status"),
-    }), 200
-
-
-
-@app.route("/paypal/confirm-subscription", methods=["POST"])
-@app.route("/confirm-subscription", methods=["POST"])
-def confirm_paypal_subscription():
-    data = request.get_json(silent=True) or {}
-    email, auth_error = _require_authenticated_email()
-    if auth_error:
-        return auth_error
-    subscription_id = (data.get("subscription_id") or data.get("subscriptionID") or "").strip()
-    requested_plan = (data.get("plan") or "").strip().lower()
-    plan_key = _paypal_plan_key(requested_plan)
-    expected_plan_id = PAYPAL_PLAN_IDS.get(plan_key)
-
-    if not email or not subscription_id or not expected_plan_id:
-        return jsonify({"confirmed": False, "error": "Email, subscription ID, and a valid plan are required."}), 400
-
-    users = _load_json(USERS_FILE, {})
-    account = users.get(email)
-    if not account:
-        return jsonify({"confirmed": False, "error": "VectraCore account not found."}), 404
-
-    stored_subscription_id = (account.get("paypal_subscription_id") or "").strip()
-    if not stored_subscription_id or stored_subscription_id != subscription_id:
-        return jsonify({"confirmed": False, "error": "This PayPal subscription is not linked to this account."}), 403
-
-    try:
-        r = _paypal_request("GET", f"/v1/billing/subscriptions/{subscription_id}")
-        payload = r.json() if r.content else {}
-    except Exception as exc:
-        app.logger.exception("PayPal subscription confirmation failed")
-        return jsonify({"confirmed": False, "error": "Could not verify the PayPal subscription."}), 502
-
-    if r.status_code >= 300:
-        return jsonify({"confirmed": False, "error": "PayPal could not verify this subscription.", "paypal": payload}), 502
-
-    paypal_plan_id = (payload.get("plan_id") or "").strip()
-    paypal_status = (payload.get("status") or "").upper()
-    subscriber = payload.get("subscriber") or {}
-    subscriber_email = (subscriber.get("email_address") or "").strip().lower()
-    paypal_custom_id = (payload.get("custom_id") or "").strip().lower()
-
-    if paypal_plan_id != expected_plan_id:
-        return jsonify({"confirmed": False, "error": "The PayPal subscription plan does not match the selected VectraCore plan."}), 409
-    if subscriber_email and subscriber_email != email and paypal_custom_id != email:
-        return jsonify({"confirmed": False, "error": "The PayPal account does not match the VectraCore account."}), 403
-
-    tier = PAYPAL_PLAN_TO_TIER.get(paypal_plan_id)
-    if paypal_status == "ACTIVE" and tier:
-        account = _set_subscription_state(email, "ACTIVE", subscription_id, paypal_plan_id, "CLIENT.CONFIRMED")
-        return jsonify({"confirmed": True, "plan": tier, "status": "ACTIVE"}), 200
-
-    return jsonify({"confirmed": False, "plan": tier, "status": paypal_status or "UNKNOWN"}), 200
-
-@app.route("/paypal/webhook", methods=["POST"])
-@app.route("/webhooks/paypal", methods=["POST"])
-def paypal_webhook():
-    if not PAYPAL_CLIENT_SECRET or not PAYPAL_WEBHOOK_ID:
-        return jsonify({"error": "PayPal webhook verification is not configured."}), 503
-
-    event = request.get_json(silent=True)
-    if not isinstance(event, dict):
-        return jsonify({"error": "Invalid webhook payload."}), 400
-
-    event_id = (event.get("id") or "").strip()
-    if not event_id:
-        return jsonify({"error": "PayPal webhook event ID is missing."}), 400
-
-    # Verify before acknowledging. A non-2xx response lets PayPal retry a
-    # transient failure instead of losing a billing state change.
-    if not _verify_paypal_webhook(dict(request.headers), event):
+    # Verify before acknowledging. A non-2xx response lets Lemon Squeezy
+    # retry a transient failure instead of losing a billing state change.
+    if not _verify_lemonsqueezy_webhook(raw_body, signature):
         return jsonify({"error": "Webhook verification failed."}), 400
 
-    if not _claim_paypal_event(event_id):
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid webhook payload."}), 400
+
+    data = payload.get("data") or {}
+    attributes = data.get("attributes") or {}
+    meta = payload.get("meta") or {}
+    # Lemon Squeezy doesn't send a dedicated delivery/event ID header, so
+    # dedupe on subscription id + event name + updated_at, which changes on
+    # every genuinely new state transition but repeats on a retried delivery.
+    event_key = "|".join([
+        str(data.get("id") or ""),
+        str(meta.get("event_name") or ""),
+        str(attributes.get("updated_at") or ""),
+    ])
+
+    if not _claim_lemonsqueezy_event(event_key):
         return jsonify({"status": "already_processed"}), 200
 
     try:
-        result = _handle_paypal_webhook(event)
+        result = _handle_lemonsqueezy_webhook(payload)
         app.logger.info(
-            "PayPal webhook processed: event_id=%s event_type=%s handled=%s access_changed=%s",
-            event_id, event.get("event_type"), result.get("handled"), result.get("access_changed"),
+            "Lemon Squeezy webhook processed: event_name=%s handled=%s access_changed=%s",
+            meta.get("event_name"), result.get("handled"), result.get("access_changed"),
         )
         return jsonify({"status": "processed"}), 200
     except Exception:
-        app.logger.exception("PayPal webhook processing failed: event_id=%s event_type=%s", event_id, event.get("event_type"))
+        app.logger.exception("Lemon Squeezy webhook processing failed: event_name=%s", meta.get("event_name"))
         # The event was claimed before processing. Remove the claim so a retry
         # can safely process it after a transient application failure.
-        with _paypal_events_lock:
-            events = _load_json(PAYPAL_EVENTS_FILE, {})
-            events.pop(event_id, None)
-            _save_json(PAYPAL_EVENTS_FILE, events)
+        with _lemonsqueezy_events_lock:
+            events = _load_json(LEMONSQUEEZY_EVENTS_FILE, {})
+            events.pop(event_key, None)
+            _save_json(LEMONSQUEEZY_EVENTS_FILE, events)
         return jsonify({"error": "Webhook processing failed."}), 500
 
 
@@ -2148,15 +1978,15 @@ def admin_logout():
 def admin_grant_access():
     """
     Owner-only tool for comping free Pro/VIP access, completely outside the
-    PayPal flow. Authenticate with an admin session from /admin/login or with
-    X-Admin-Key / Authorization: Bearer on the request. Never put the secret
-    in a URL or frontend file.
+    Lemon Squeezy flow. Authenticate with an admin session from /admin/login
+    or with X-Admin-Key / Authorization: Bearer on the request. Never put
+    the secret in a URL or frontend file.
 
     POST /admin/grant-access
     Body: {"email": "someone@example.com", "plan": "vip"}   # or "pro", or "default" to revoke
 
-    This only ever writes to users.json — it never talks to PayPal, so it
-    cannot create a real charge or a real PayPal subscription. Revoking is
+    This only ever writes to users.json — it never talks to Lemon Squeezy,
+    so it cannot create a real charge or a real subscription. Revoking is
     the same call with "plan": "default".
     """
     admin_error = _require_admin()
@@ -2180,8 +2010,8 @@ def admin_grant_access():
         account["comped"] = plan != "default"  # marks this as an owner-granted freebie, not a real payer
         if plan != "default":
             account["subscription_status"] = "ACTIVE"
-            account["paypal_subscription_id"] = None
-            account["paypal_plan_id"] = None
+            account["lemonsqueezy_subscription_id"] = None
+            account["lemonsqueezy_tier"] = None
         else:
             account["subscription_status"] = None
         account["subscription_updated_at"] = datetime.utcnow().isoformat()
@@ -2408,18 +2238,14 @@ def switch_account():
 
 @app.route("/select-plan", methods=["POST"])
 def select_plan():
-    """Records which plan the signed-in user picked on billing.html.
+    """Lets the signed-in user switch themselves back to the free Default
+    plan (e.g. a "downgrade" button in account settings).
 
-    billing.html no longer goes through PayPal — it just lets the user pick
-    Pro/VIP and continue. Without this endpoint that choice only ever lived
-    in the browser's localStorage, so work.html's own /account re-check on
-    every page load (which exists to stop a stale plan from lingering after
-    an account switch) would immediately overwrite it back to "default".
-    This makes the plan stick by writing it to users.json, the same way
-    /admin/grant-access already comps free access — just self-service, tied
-    to the caller's own authenticated session, and with no admin key needed.
-
-    This never talks to PayPal and never creates a real charge.
+    Pro/VIP are no longer grantable through this endpoint — now that Lemon
+    Squeezy is wired up, paid access is only ever granted by a verified
+    /webhooks/lemonsqueezy subscription event (or by /admin/grant-access for
+    owner comps). Picking Pro/VIP happens on billing.html, which sends the
+    user to a real Lemon Squeezy checkout instead of calling this route.
     """
     email, auth_error = _require_authenticated_email()
     if auth_error:
@@ -2429,6 +2255,8 @@ def select_plan():
     plan = (data.get("plan") or "").strip().lower()
     if plan not in VALID_PLANS:
         return jsonify({"error": "plan must be one of: " + ", ".join(VALID_PLANS)}), 400
+    if plan != "default":
+        return jsonify({"error": "Pro and VIP are only available through checkout on /billing/."}), 403
 
     if _rate_limited("select-plan", 20, 600, email):
         return jsonify({"error": "Too many plan changes. Please try again later."}), 429
@@ -2437,22 +2265,13 @@ def select_plan():
         users = _load_json(USERS_FILE, {})
         account = users.get(email, {"registered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
         account["verified"] = True
-        account["plan"] = plan
-        # Distinguishes a user picking their own plan for free (no payment
-        # processor wired up yet) from an owner-granted "comped" freebie —
-        # keep them separate in users.json/admin/users for later reference.
-        account["self_selected"] = plan != "default"
-        if plan != "default":
-            account["subscription_status"] = "ACTIVE"
-            account["paypal_subscription_id"] = None
-            account["paypal_plan_id"] = None
-        else:
-            account["subscription_status"] = None
+        account["plan"] = "default"
+        account["subscription_status"] = None
         account["subscription_updated_at"] = datetime.utcnow().isoformat()
         users[email] = account
         _save_json(USERS_FILE, users)
 
-    return jsonify({"status": "success", "email": email, "plan": plan}), 200
+    return jsonify({"status": "success", "email": email, "plan": "default"}), 200
 
 
 @app.route("/usage", methods=["GET"])
@@ -2908,7 +2727,7 @@ def analyze_chart():
             "default"
         ).lower().strip()
 
-        # Never trust a paid plan sent by the browser; PayPal state is authoritative.
+        # Never trust a paid plan sent by the browser; Lemon Squeezy subscription state is authoritative.
         plan = _effective_plan_for_email(user_email, requested_plan)
 
         chart = request.files.get("chart")

@@ -112,12 +112,12 @@
 const PLANS = {
   pro: {
     name:'Pro', type:'Serious analysis, every day', className:'pro',
-    price:'$19.99', period:'/ month', note:'First 2 months at the introductory price · then $99/month', id:'P-6R376963A16807448NKQ2RLA',
+    price:'$19.99', period:'/ month', note:'First 2 months at the introductory price · then $99/month',
     details:['150 AI chart analyses per month','Unlimited chat with the trading AI — ask anything, anytime','Full technical breakdowns: structure, trend, key levels','Fundamental and geopolitical context woven into every answer','Save and revisit your analysis history']
   },
   vip: {
     name:'VIP', type:'Nothing capped, nothing missed', className:'vip',
-    price:'$49.99', period:'/ month', note:'First 2 months at the introductory price · then $219.99/month', id:'P-6XG61705DE291753SNKQ2STA',
+    price:'$49.99', period:'/ month', note:'First 2 months at the introductory price · then $219.99/month',
     details:['Unlimited chart analyses — no monthly count to watch','Technical + fundamental analysis combined in one read','Multi-timeframe view on every chart you upload','Live economic calendar folded into the analysis','Track how a chart\'s structure shifts over time','Full analysis history, unlimited']
   }
 };
@@ -141,13 +141,23 @@ if (storedEmail) emailInput.value = storedEmail;
 
 const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
 
-// No payment processor is wired up here — picking a plan just carries the
-// choice straight through to the terminal. The email is kept/validated so
-// the plan selection lines up with the same VectraCore account. The plan
-// is also saved server-side via /select-plan so it actually sticks — the
-// terminal re-checks the plan against the backend's /account on every
-// load, and without this the choice would only live in localStorage and
-// get reverted back to "default" as soon as that check ran.
+// Real checkout: this account's Pro/VIP checkout URLs come from the
+// backend (/lemonsqueezy/config), which reads them from the
+// LEMONSQUEEZY_PRO_CHECKOUT_URL / LEMONSQUEEZY_VIP_CHECKOUT_URL env vars.
+// We never hardcode Lemon Squeezy URLs here so rotating them server-side
+// is enough — no frontend redeploy needed.
+let checkoutUrls = {};
+async function loadCheckoutConfig() {
+  try {
+    const res = await fetch(API_BASE_URL + '/lemonsqueezy/config', { credentials: 'include' });
+    if (!res.ok) throw new Error('config request failed');
+    const data = await res.json();
+    checkoutUrls = data.checkout_urls || {};
+  } catch (err) {
+    console.error('[VectraCore] Could not load checkout config:', err);
+  }
+}
+
 const goBtn = document.getElementById('goBtn');
 goBtn.addEventListener('click', async () => {
   const email = emailInput.value.trim().toLowerCase();
@@ -158,7 +168,6 @@ goBtn.addEventListener('click', async () => {
   }
   emailError.style.display = 'none';
   localStorage.setItem('vectracore_email', email);
-  localStorage.setItem('vectracore_plan', selected);
   localStorage.setItem('vectracore_selected_plan', selected);
   localStorage.setItem('vectracore_billing_cycle', 'monthly');
 
@@ -166,30 +175,34 @@ goBtn.addEventListener('click', async () => {
   const originalLabel = goBtn.textContent;
   goBtn.textContent = 'One sec…';
 
-  try {
-    const res = await fetch(API_BASE_URL + '/select-plan', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: selected })
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || 'Could not save your plan. Please try again.');
-    }
-  } catch (err) {
-    console.error('[VectraCore] select-plan failed:', err);
-    alert(err.message || 'Could not save your plan. Please check your connection and try again.');
+  const checkoutBase = checkoutUrls[selected];
+  if (!checkoutBase) {
+    alert('Checkout is not configured for this plan right now. Please try again shortly.');
     goBtn.disabled = false;
     goBtn.textContent = originalLabel;
     return;
   }
 
-  window.location.replace('/terminal/?plan=' + encodeURIComponent(selected));
+  // Prefill + lock the checkout email to this VectraCore account, and pass
+  // the account email + intended tier through as custom data. Lemon
+  // Squeezy echoes checkout[custom][...] back on every webhook for the
+  // resulting subscription, which is how /webhooks/lemonsqueezy knows
+  // which VectraCore account and tier to activate — no guessing from a
+  // variant ID required. redirect_url brings the user straight back to
+  // the terminal once payment succeeds.
+  const redirectUrl = `${location.origin}/terminal/?plan=${encodeURIComponent(selected)}&checkout=success`;
+  const url = new URL(checkoutBase);
+  url.searchParams.set('checkout[email]', email);
+  url.searchParams.set('checkout[custom][email]', email);
+  url.searchParams.set('checkout[custom][tier]', selected);
+  url.searchParams.set('checkout[redirect_url]', redirectUrl);
+
+  window.location.href = url.toString();
 });
 
 if (isVerified) {
   renderDetails();
+  loadCheckoutConfig();
 }
 </script>
 </body>
