@@ -67,9 +67,13 @@
         .email-input:focus { outline:2px solid rgba(139,92,246,.45); outline-offset:1px; border-color:var(--accent-color); }
         .email-error { display:none; color:#ff8f8f; font-size:.76rem; margin:-8px 0 14px; }
         .payment > p { color:var(--text-muted); font-size:.82rem; line-height:1.5; margin-bottom:22px; }
-        .go-btn { width:100%; padding:15px; border:none; border-radius:9px; background:linear-gradient(135deg,var(--accent-color),var(--accent-hover)); color:#fff; font-size:1rem; font-weight:700; font-family:'Space Grotesk','Inter',sans-serif; cursor:pointer; transition:transform .15s, box-shadow .2s; box-shadow:0 4px 20px rgba(139,92,246,.28); }
-        .go-btn:hover { transform:translateY(-2px); box-shadow:0 8px 28px rgba(139,92,246,.4); }
-        .go-btn:active { transform:translateY(0); }
+        .go-btn { width:100%; padding:15px 18px; border:none; border-radius:9px; background:linear-gradient(135deg,var(--accent-color),var(--accent-hover)); color:#fff; font-size:1rem; font-weight:700; font-family:'Space Grotesk','Inter',sans-serif; cursor:pointer; transition:transform .15s, box-shadow .2s, filter .15s; box-shadow:0 4px 20px rgba(139,92,246,.28); display:flex; align-items:center; justify-content:center; gap:9px; }
+        .go-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 10px 32px rgba(139,92,246,.45); filter:brightness(1.06); }
+        .go-btn:active:not(:disabled) { transform:translateY(0); }
+        .go-btn:disabled { cursor:default; opacity:.75; box-shadow:0 4px 20px rgba(139,92,246,.18); }
+        .go-btn-icon { width:18px; height:18px; flex:0 0 18px; transition:transform .2s; }
+        .go-btn:hover:not(:disabled) .go-btn-icon { transform:translateX(3px); }
+        .email-match-notice { font-size:.76rem; line-height:1.5; color:var(--text-muted); margin:-8px 0 16px; padding:10px 12px; border-radius:8px; background:rgba(139,92,246,.06); border:1px solid rgba(139,92,246,.16); }
         .loading { color:var(--text-muted); font-size:.85rem; text-align:center; padding:24px 0; }
         .secure { margin-top:18px; padding-top:17px; border-top:1px solid rgba(255,255,255,.07); color:var(--text-muted); font-size:.74rem; line-height:1.5; text-align:center; }
         .notice { margin-top:22px; padding:16px 18px; border-radius:10px; background:rgba(139,92,246,.07); border:1px solid rgba(139,92,246,.22); color:var(--text-muted); font-size:.78rem; line-height:1.55; }
@@ -92,7 +96,6 @@
                 <div><div class="plan-name" id="planName">Pro</div><div class="plan-type" id="planType">Advanced trading intelligence</div></div>
                 <div class="price accent" id="price">$19.99 <small>/ month</small></div>
             </div>
-            <div class="trial" id="trial">First 2 months at the introductory price · then $99/month</div>
             <ul class="detail-list" id="details"></ul>
             <div class="notice">Subscriptions renew automatically every month. VectraCore does not offer refunds; the introductory period is provided so you can evaluate the service before the regular price applies.</div>
         </section>
@@ -102,7 +105,11 @@
             <label class="email-label" for="billingEmail">VectraCore account email</label>
             <input id="billingEmail" class="email-input" type="email" autocomplete="email" placeholder="you@example.com" required>
             <div id="emailError" class="email-error">Enter the same verified email you used to create your VectraCore account.</div>
-            <button id="goBtn" type="button" class="go-btn">Let's Goo !</button>
+            <div class="email-match-notice">Use this exact email on the Whop checkout page too — it's how your account gets upgraded automatically after payment.</div>
+            <button id="goBtn" type="button" class="go-btn">
+              <span class="go-btn-label">Continue to checkout</span>
+              <svg class="go-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
             <div class="secure">By continuing, you agree to VectraCore's <a href="/terms-of-service/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Terms of Service</a> and <a href="/privacy-policy/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-color, #8B5CF6);">Privacy Policy</a>.</div>
         </aside>
     </div>
@@ -132,8 +139,8 @@ if (!isVerified) {
   location.replace(`/home/?plan=${encodeURIComponent(selected)}&next=billing`);
 }
 
-const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), trialEl=document.getElementById('trial'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
-function renderDetails(){ const plan=PLANS[selected]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=plan.price+' <small>'+plan.period+'</small>'; trialEl.textContent=plan.note; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent="You're all set — continue to start using "+plan.name+'.'; }
+const summary=document.getElementById('summary'), nameEl=document.getElementById('planName'), typeEl=document.getElementById('planType'), priceEl=document.getElementById('price'), detailsEl=document.getElementById('details'), paymentDesc=document.getElementById('paymentDescription');
+function renderDetails(){ const plan=PLANS[selected]; summary.className='summary '+plan.className; nameEl.textContent=plan.name; typeEl.textContent=plan.type; priceEl.innerHTML=plan.price+' <small>'+plan.period+'</small>'; detailsEl.innerHTML=plan.details.map(x=>'<li><svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'+x+'</li>').join(''); paymentDesc.textContent="You're all set — continue to "+plan.name+" checkout."; }
 const emailInput = document.getElementById('billingEmail');
 const emailError = document.getElementById('emailError');
 const storedEmail = (localStorage.getItem('vectracore_user_email') || localStorage.getItem('vectracore_email') || params.get('email') || '').toLowerCase();
@@ -142,14 +149,13 @@ if (storedEmail) emailInput.value = storedEmail;
 const API_BASE_URL = 'https://vectracore.pythonanywhere.com';
 
 // Real checkout: this account's Pro/VIP checkout URLs come from the
-// backend (/lemonsqueezy/config), which reads them from the
-// LEMONSQUEEZY_PRO_CHECKOUT_URL / LEMONSQUEEZY_VIP_CHECKOUT_URL env vars.
-// We never hardcode Lemon Squeezy URLs here so rotating them server-side
-// is enough — no frontend redeploy needed.
+// backend (/whop/config), which reads them from the WHOP_PRO_CHECKOUT_URL /
+// WHOP_VIP_CHECKOUT_URL env vars. We never hardcode Whop URLs here so
+// rotating them server-side is enough — no frontend redeploy needed.
 let checkoutUrls = {};
 async function loadCheckoutConfig() {
   try {
-    const res = await fetch(API_BASE_URL + '/lemonsqueezy/config', { credentials: 'include' });
+    const res = await fetch(API_BASE_URL + '/whop/config', { credentials: 'include' });
     if (!res.ok) throw new Error('config request failed');
     const data = await res.json();
     checkoutUrls = data.checkout_urls || {};
@@ -171,33 +177,25 @@ goBtn.addEventListener('click', async () => {
   localStorage.setItem('vectracore_selected_plan', selected);
   localStorage.setItem('vectracore_billing_cycle', 'monthly');
 
+  const goBtnLabel = goBtn.querySelector('.go-btn-label');
   goBtn.disabled = true;
-  const originalLabel = goBtn.textContent;
-  goBtn.textContent = 'One sec…';
+  const originalLabel = goBtnLabel.textContent;
+  goBtnLabel.textContent = 'One sec…';
 
-  const checkoutBase = checkoutUrls[selected];
-  if (!checkoutBase) {
+  const checkoutUrl = checkoutUrls[selected];
+  if (!checkoutUrl) {
     alert('Checkout is not configured for this plan right now. Please try again shortly.');
     goBtn.disabled = false;
-    goBtn.textContent = originalLabel;
+    goBtnLabel.textContent = originalLabel;
     return;
   }
 
-  // Prefill + lock the checkout email to this VectraCore account, and pass
-  // the account email + intended tier through as custom data. Lemon
-  // Squeezy echoes checkout[custom][...] back on every webhook for the
-  // resulting subscription, which is how /webhooks/lemonsqueezy knows
-  // which VectraCore account and tier to activate — no guessing from a
-  // variant ID required. redirect_url brings the user straight back to
-  // the terminal once payment succeeds.
-  const redirectUrl = `${location.origin}/terminal/?plan=${encodeURIComponent(selected)}&checkout=success`;
-  const url = new URL(checkoutBase);
-  url.searchParams.set('checkout[email]', email);
-  url.searchParams.set('checkout[custom][email]', email);
-  url.searchParams.set('checkout[custom][tier]', selected);
-  url.searchParams.set('checkout[redirect_url]', redirectUrl);
-
-  window.location.href = url.toString();
+  // Whop's hosted checkout page doesn't support prefilling/locking the
+  // email via a plain URL parameter (that's a Lemon Squeezy-specific
+  // feature) — the emailNotice above tells the user to enter this same
+  // email at checkout, since that's how /webhook/whop matches the
+  // resulting payment back to this VectraCore account.
+  window.location.href = checkoutUrl;
 });
 
 if (isVerified) {

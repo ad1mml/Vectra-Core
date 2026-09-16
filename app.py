@@ -25,12 +25,10 @@ Setup:
        Gmail, use an App Password (not your normal password) as
        SMTP_PASSWORD. Without these set, signup will fail with a clear
        502 instead of silently skipping verification.
-    5. fill in LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_STORE_ID,
-       LEMONSQUEEZY_WEBHOOK_SECRET, LEMONSQUEEZY_PRO_CHECKOUT_URL, and
-       LEMONSQUEEZY_VIP_CHECKOUT_URL so Pro/VIP checkout and the
-       /webhooks/lemonsqueezy subscription webhook work. Without these,
-       billing.html can't send users to checkout and paid access can never
-       actually turn on.
+    5. fill in WHOP_API_KEY, WHOP_WEBHOOK_SECRET, WHOP_PRO_CHECKOUT_URL, and
+       WHOP_VIP_CHECKOUT_URL so Pro/VIP checkout and the /webhook/whop
+       membership webhook work. Without these, billing.html can't send
+       users to checkout and paid access can never actually turn on.
     6. pip install -r requirements.txt
     7. python app.py
 """
@@ -47,6 +45,7 @@ import logging
 import secrets
 import hashlib
 import hmac
+import base64
 import uuid
 import threading
 from collections import defaultdict, deque
@@ -210,21 +209,29 @@ FROM_NAME = os.environ.get("FROM_NAME", "VectraCore")
 #      same value in the frontend's GOOGLE_CLIENT_ID constant
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 
-# Lemon Squeezy Subscriptions. LEMONSQUEEZY_API_KEY is only needed if you
-# later call the Lemon Squeezy REST API (e.g. to cancel a subscription from
-# the admin panel) — the checkout + webhook flow below doesn't require it.
-# It is still server-only and must never be exposed to the browser.
-LEMONSQUEEZY_API_KEY = os.environ.get("LEMONSQUEEZY_API_KEY", "").strip()
-LEMONSQUEEZY_STORE_ID = os.environ.get("LEMONSQUEEZY_STORE_ID", "").strip()
-# Used to verify the HMAC signature Lemon Squeezy sends on every webhook
-# request (X-Signature header) — never trust an unverified webhook body.
-LEMONSQUEEZY_WEBHOOK_SECRET = os.environ.get("LEMONSQUEEZY_WEBHOOK_SECRET", "").strip()
-# Hosted checkout URLs for each paid tier, from your Lemon Squeezy store.
-# The frontend appends ?checkout[email]=...&checkout[custom][tier]=pro (etc.)
-# to these at click time — see /lemonsqueezy/config below.
-LEMONSQUEEZY_CHECKOUT_URLS = {
-    "pro": os.environ.get("LEMONSQUEEZY_PRO_CHECKOUT_URL", "").strip(),
-    "vip": os.environ.get("LEMONSQUEEZY_VIP_CHECKOUT_URL", "").strip(),
+# Whop Subscriptions. WHOP_API_KEY is only needed if you later call the
+# Whop REST API directly (e.g. to look up a membership from the admin
+# panel) — the checkout + webhook flow below doesn't require it. It is
+# still server-only and must never be exposed to the browser.
+WHOP_API_KEY = os.environ.get("WHOP_API_KEY", "").strip()
+WHOP_APP_ID = os.environ.get("WHOP_APP_ID", "").strip()
+# Used to verify the Standard Webhooks signature Whop sends on every
+# webhook request (webhook-signature header) — never trust an unverified
+# webhook body. Kept exactly as Whop issued it (the "ws_..." string) —
+# never strip the prefix or re-encode it.
+WHOP_WEBHOOK_SECRET = os.environ.get("WHOP_WEBHOOK_SECRET", "").strip()
+# Hosted checkout URLs for each paid tier, from your Whop dashboard
+# (Products → the product → Checkout Links). See /whop/config below.
+WHOP_CHECKOUT_URLS = {
+    "pro": os.environ.get("WHOP_PRO_CHECKOUT_URL", "").strip(),
+    "vip": os.environ.get("WHOP_VIP_CHECKOUT_URL", "").strip(),
+}
+# Whop webhook payloads carry the human-readable product title, not a
+# plan ID, so the tier is derived from that title (lowercased) rather
+# than a lookup table of plan/variant IDs.
+WHOP_PRODUCT_TO_TIER = {
+    "vectracore pro": "pro",
+    "vectracore vip": "vip",
 }
 
 VERIFICATION_CODE_TTL_SECONDS = 600       # code valid for 10 minutes
@@ -558,7 +565,7 @@ def _save_json(path, data):
 # entry -> write-the-whole-file-back dance, with no locking. The webhook
 # handler in particular fires this from a background thread
 # (threading.Thread(target=_process_async...)) specifically so it can ack
-# Lemon Squeezy fast, which means it can easily overlap with a concurrent
+# Whop fast, which means it can easily overlap with a concurrent
 # admin_grant_access or /register call.
 #
 # Without a lock, two overlapping load->modify->save cycles are a classic
@@ -867,28 +874,27 @@ def _create_or_update_account(email: str, plan: str, agreed_policies: bool = Fal
 
 
 # ---------------------------------------------------------------------------
-# Lemon Squeezy subscription helpers
+# Whop subscription helpers
 # ---------------------------------------------------------------------------
 def _effective_plan_for_email(email, requested_plan="default"):
     # Browser-supplied plan values are never trusted for paid access.
-    # For an ACTIVE Lemon Squeezy subscription, derive the tier from the
-    # stored lemonsqueezy_tier first. That prevents a stale/overwritten
-    # `account["plan"]` value such as "default" from masking a real
-    # Pro/VIP subscription.
+    # For an ACTIVE Whop membership, derive the tier from the stored
+    # whop_tier first. That prevents a stale/overwritten `account["plan"]`
+    # value such as "default" from masking a real Pro/VIP membership.
     email = (email or "").strip().lower()
     users = _load_json(USERS_FILE, {})
     account = users.get(email, {})
     if account.get("subscription_status") == "ACTIVE":
-        ls_tier = account.get("lemonsqueezy_tier")
-        if ls_tier in ("pro", "vip"):
-            return ls_tier
+        whop_tier = account.get("whop_tier")
+        if whop_tier in ("pro", "vip"):
+            return whop_tier
         if account.get("plan") in ("pro", "vip"):
             return account["plan"]
     # Never grant paid access from a browser-supplied requested_plan.
     return "default"
 
 
-def _set_subscription_state(email, status, subscription_id=None, tier=None, event_type=None):
+def _set_subscription_state(email, status, membership_id=None, tier=None, event_type=None):
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -897,96 +903,142 @@ def _set_subscription_state(email, status, subscription_id=None, tier=None, even
         account = users.get(email, {"plan": "default", "verified": True})
         status = (status or "").upper()
         account["subscription_status"] = status
-        if subscription_id:
-            account["lemonsqueezy_subscription_id"] = subscription_id
+        if membership_id:
+            account["whop_membership_id"] = membership_id
         if tier:
-            account["lemonsqueezy_tier"] = tier
+            account["whop_tier"] = tier
         if event_type:
-            account["last_lemonsqueezy_event"] = event_type
+            account["last_whop_event"] = event_type
         account["subscription_updated_at"] = datetime.utcnow().isoformat()
         if status == "ACTIVE" and tier:
             account["plan"] = tier
-        elif status in {"CANCELLED", "EXPIRED", "SUSPENDED", "REVOKED", "PAUSED", "UNPAID", "PAST_DUE"}:
+        elif status in {"INACTIVE", "CANCELLED", "EXPIRED", "FAILED"}:
             account["plan"] = "default"
         users[email] = account
         _save_json(USERS_FILE, users)
         return account
 
 
-def _verify_lemonsqueezy_webhook(raw_body: bytes, signature_header: str) -> bool:
-    """Lemon Squeezy signs every webhook body with HMAC-SHA256 using your
-    webhook secret, sent in the X-Signature header as a hex digest. Always
-    verify against the *raw* request body (not the re-serialized JSON) —
-    re-serializing can change whitespace/key order and break the digest."""
-    if not LEMONSQUEEZY_WEBHOOK_SECRET or not signature_header:
-        app.logger.error("Lemon Squeezy webhook verification unavailable: missing secret or signature header.")
+def _verify_whop_webhook(raw_body: bytes, webhook_id: str, webhook_timestamp: str, signature_header: str) -> bool:
+    """Whop webhooks follow the Standard Webhooks spec: the signed string is
+    "{webhook-id}.{webhook-timestamp}.{raw body}", HMAC-SHA256'd with your
+    ws_... secret (used exactly as issued — never stripped or re-encoded),
+    base64-encoded, and sent as "v1,<signature>" in the webhook-signature
+    header. Always verify against the *raw* request body — re-serializing
+    JSON can change whitespace/key order and break the digest. Requests
+    older than 5 minutes are rejected to prevent replay attacks."""
+    if not WHOP_WEBHOOK_SECRET or not webhook_id or not webhook_timestamp or not signature_header:
+        app.logger.error("Whop webhook verification unavailable: missing secret or headers.")
         return False
-    digest = hmac.new(LEMONSQUEEZY_WEBHOOK_SECRET.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(digest, signature_header.strip())
+    try:
+        ts = int(webhook_timestamp)
+    except ValueError:
+        return False
+    if abs(time.time() - ts) > 300:
+        app.logger.error("Whop webhook rejected: timestamp too old/skewed.")
+        return False
+
+    signed_content = f"{webhook_id}.{webhook_timestamp}.".encode("utf-8") + raw_body
+    expected = base64.b64encode(
+        hmac.new(WHOP_WEBHOOK_SECRET.encode("utf-8"), signed_content, hashlib.sha256).digest()
+    ).decode("utf-8")
+
+    # webhook-signature can contain multiple space-separated "v1,<sig>" values
+    for candidate in signature_header.split():
+        candidate = candidate.strip()
+        if candidate.startswith("v1,"):
+            candidate = candidate[3:]
+        if hmac.compare_digest(expected, candidate):
+            return True
+    return False
 
 
-LEMONSQUEEZY_EVENTS_FILE = os.path.join(DATA_DIR, "lemonsqueezy_events.json")
-_lemonsqueezy_events_lock = threading.Lock()
+WHOP_EVENTS_FILE = os.path.join(DATA_DIR, "whop_events.json")
+_whop_events_lock = threading.Lock()
 
-def _claim_lemonsqueezy_event(event_key):
-    """Atomically mark a Lemon Squeezy webhook delivery as processed/claimed
-    to prevent duplicates (Lemon Squeezy retries on any non-2xx response, and
-    can otherwise redeliver the same event more than once)."""
-    if not event_key:
+def _claim_whop_event(webhook_id):
+    """Atomically mark a Whop webhook delivery as processed/claimed to
+    prevent duplicates — Whop delivers each event at least once and retries
+    failed/slow responses, and every retry of the same delivery reuses the
+    same webhook-id, so that's the correct dedup key."""
+    if not webhook_id:
         return True
-    with _lemonsqueezy_events_lock:
-        events = _load_json(LEMONSQUEEZY_EVENTS_FILE, {})
-        if event_key in events:
+    with _whop_events_lock:
+        events = _load_json(WHOP_EVENTS_FILE, {})
+        if webhook_id in events:
             return False
-        events[event_key] = {"status": "processed", "received_at": datetime.utcnow().isoformat()}
-        _save_json(LEMONSQUEEZY_EVENTS_FILE, events)
+        events[webhook_id] = {"status": "processed", "received_at": datetime.utcnow().isoformat()}
+        _save_json(WHOP_EVENTS_FILE, events)
         return True
 
 
-def _handle_lemonsqueezy_webhook(payload):
-    """Handles the `subscription_*` webhook events. Tier and the owning
-    email both come from `meta.custom_data`, which the checkout URL was
-    built with (see /lemonsqueezy/config and billing.html) — Lemon
-    Squeezy echoes custom_data back on every webhook for that subscription,
-    so we never have to guess the tier from a variant ID."""
-    meta = payload.get("meta") or {}
-    event_name = (meta.get("event_name") or "").strip().lower()
-    custom_data = meta.get("custom_data") or {}
-    data = payload.get("data") or {}
-    attributes = data.get("attributes") or {}
+def _extract_whop_email(data):
+    """The buyer's email lives under a few different keys depending on the
+    event's resource type (payment vs. membership), so check them in order
+    rather than assuming one fixed shape."""
+    for path in (
+        ("user", "email"),
+        ("member", "email"),
+        ("customer", "email"),
+    ):
+        node = data
+        for key in path:
+            node = (node or {}).get(key) if isinstance(node, dict) else None
+        if node:
+            return str(node).strip().lower()
+    email = data.get("email")
+    return str(email).strip().lower() if email else ""
 
-    sub_id = data.get("id")
-    status = (attributes.get("status") or "").upper()
-    email = (custom_data.get("email") or attributes.get("user_email") or "").strip().lower()
-    tier = (custom_data.get("tier") or "").strip().lower()
-    if tier not in ("pro", "vip"):
-        tier = None
 
-    if not email and sub_id:
-        with _users_lock:
-            users = _load_json(USERS_FILE, {})
-        for candidate, account in users.items():
-            if account.get("lemonsqueezy_subscription_id") == sub_id:
-                email = candidate
-                break
+def _extract_whop_tier(data):
+    """Tier is derived from the product/access-pass title Whop sends back
+    on the event, matched against WHOP_PRODUCT_TO_TIER — never trust a
+    browser-supplied plan name."""
+    for path in (
+        ("product", "title"),
+        ("access_pass", "title"),
+        ("plan", "product", "title"),
+    ):
+        node = data
+        for key in path:
+            node = (node or {}).get(key) if isinstance(node, dict) else None
+        if node:
+            tier = WHOP_PRODUCT_TO_TIER.get(str(node).strip().lower())
+            if tier:
+                return tier
+    return None
 
-    if not event_name.startswith("subscription_"):
-        # subscription_payment_success / subscription_payment_failed and
-        # anything order-related don't change plan entitlement by themselves.
-        return {"handled": True, "access_changed": False}
 
-    active_statuses = {"ACTIVE", "ON_TRIAL"}
-    if status in active_statuses:
+def _handle_whop_webhook(event_type, data):
+    """Handles payment.succeeded / payment.failed / membership.activated /
+    membership.deactivated. Grants access on a successful payment or an
+    activated membership, revokes it on a deactivated membership. Whop
+    delivers payment.succeeded and membership.activated together for a new
+    subscription purchase — acting on both is safe since they converge on
+    the same _set_subscription_state call."""
+    email = _extract_whop_email(data)
+    tier = _extract_whop_tier(data)
+    membership_id = data.get("id") or (data.get("membership") or {}).get("id")
+
+    grant_events = {"payment.succeeded", "membership.activated"}
+    revoke_events = {"membership.deactivated"}
+
+    if event_type in grant_events:
         if not (email and tier):
             return {"handled": False, "access_changed": False}
-        _set_subscription_state(email, "ACTIVE", sub_id, tier, event_name)
+        _set_subscription_state(email, "ACTIVE", membership_id, tier, event_type)
         return {"handled": True, "access_changed": True}
 
-    # Anything else (cancelled, expired, paused, unpaid, past_due) drops
-    # the account back to the default plan.
-    if email:
-        _set_subscription_state(email, status or event_name.rsplit("_", 1)[-1], sub_id, tier, event_name)
-    return {"handled": True, "access_changed": bool(email)}
+    if event_type in revoke_events:
+        if not email:
+            return {"handled": False, "access_changed": False}
+        _set_subscription_state(email, "INACTIVE", membership_id, tier, event_type)
+        return {"handled": True, "access_changed": True}
+
+    # payment.failed and anything else don't change plan entitlement —
+    # a failed renewal is followed by Whop's own dunning/retry, not an
+    # immediate downgrade here.
+    return {"handled": True, "access_changed": False}
 
 
 # ---------------------------------------------------------------------------
@@ -1890,65 +1942,60 @@ def _no_na_walk(node, decision):
 # Routes
 # ---------------------------------------------------------------------------
 
-@app.route("/lemonsqueezy/config", methods=["GET"])
-def lemonsqueezy_config():
+@app.route("/whop/config", methods=["GET"])
+def whop_config():
     """Safe-to-expose config for the frontend: just the hosted checkout URLs.
-    The API key, store ID, and webhook secret never leave the server."""
+    The API key and webhook secret never leave the server."""
     email = _authenticated_email()
     return jsonify({
-        "checkout_urls": LEMONSQUEEZY_CHECKOUT_URLS,
+        "checkout_urls": WHOP_CHECKOUT_URLS,
         "email": email,
     }), 200
 
 
-@app.route("/webhooks/lemonsqueezy", methods=["POST"])
-@app.route("/lemonsqueezy/webhook", methods=["POST"])
-def lemonsqueezy_webhook():
-    if not LEMONSQUEEZY_WEBHOOK_SECRET:
-        return jsonify({"error": "Lemon Squeezy webhook verification is not configured."}), 503
+@app.route("/webhook/whop", methods=["POST"])
+@app.route("/webhooks/whop", methods=["POST"])
+def whop_webhook():
+    if not WHOP_WEBHOOK_SECRET:
+        return jsonify({"error": "Whop webhook verification is not configured."}), 503
 
     raw_body = request.get_data()
-    signature = request.headers.get("X-Signature", "")
+    webhook_id = request.headers.get("webhook-id", "")
+    webhook_timestamp = request.headers.get("webhook-timestamp", "")
+    signature = request.headers.get("webhook-signature", "")
 
-    # Verify before acknowledging. A non-2xx response lets Lemon Squeezy
-    # retry a transient failure instead of losing a billing state change.
-    if not _verify_lemonsqueezy_webhook(raw_body, signature):
+    # Verify before acknowledging. A non-2xx response lets Whop retry a
+    # transient failure instead of losing a billing state change.
+    if not _verify_whop_webhook(raw_body, webhook_id, webhook_timestamp, signature):
         return jsonify({"error": "Webhook verification failed."}), 400
 
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict):
+    event = request.get_json(silent=True)
+    if not isinstance(event, dict):
         return jsonify({"error": "Invalid webhook payload."}), 400
 
-    data = payload.get("data") or {}
-    attributes = data.get("attributes") or {}
-    meta = payload.get("meta") or {}
-    # Lemon Squeezy doesn't send a dedicated delivery/event ID header, so
-    # dedupe on subscription id + event name + updated_at, which changes on
-    # every genuinely new state transition but repeats on a retried delivery.
-    event_key = "|".join([
-        str(data.get("id") or ""),
-        str(meta.get("event_name") or ""),
-        str(attributes.get("updated_at") or ""),
-    ])
+    event_type = (event.get("type") or "").strip().lower()
+    data = event.get("data") or {}
 
-    if not _claim_lemonsqueezy_event(event_key):
+    # Whop retries a failed/slow delivery with the same webhook-id, so
+    # that header — not anything inside the payload — is the dedupe key.
+    if not _claim_whop_event(webhook_id):
         return jsonify({"status": "already_processed"}), 200
 
     try:
-        result = _handle_lemonsqueezy_webhook(payload)
+        result = _handle_whop_webhook(event_type, data)
         app.logger.info(
-            "Lemon Squeezy webhook processed: event_name=%s handled=%s access_changed=%s",
-            meta.get("event_name"), result.get("handled"), result.get("access_changed"),
+            "Whop webhook processed: type=%s handled=%s access_changed=%s",
+            event_type, result.get("handled"), result.get("access_changed"),
         )
         return jsonify({"status": "processed"}), 200
     except Exception:
-        app.logger.exception("Lemon Squeezy webhook processing failed: event_name=%s", meta.get("event_name"))
-        # The event was claimed before processing. Remove the claim so a retry
-        # can safely process it after a transient application failure.
-        with _lemonsqueezy_events_lock:
-            events = _load_json(LEMONSQUEEZY_EVENTS_FILE, {})
-            events.pop(event_key, None)
-            _save_json(LEMONSQUEEZY_EVENTS_FILE, events)
+        app.logger.exception("Whop webhook processing failed: type=%s", event_type)
+        # The event was claimed before processing. Remove the claim so a
+        # retry can safely process it after a transient application failure.
+        with _whop_events_lock:
+            events = _load_json(WHOP_EVENTS_FILE, {})
+            events.pop(webhook_id, None)
+            _save_json(WHOP_EVENTS_FILE, events)
         return jsonify({"error": "Webhook processing failed."}), 500
 
 
@@ -1978,15 +2025,15 @@ def admin_logout():
 def admin_grant_access():
     """
     Owner-only tool for comping free Pro/VIP access, completely outside the
-    Lemon Squeezy flow. Authenticate with an admin session from /admin/login
+    Whop flow. Authenticate with an admin session from /admin/login
     or with X-Admin-Key / Authorization: Bearer on the request. Never put
     the secret in a URL or frontend file.
 
     POST /admin/grant-access
     Body: {"email": "someone@example.com", "plan": "vip"}   # or "pro", or "default" to revoke
 
-    This only ever writes to users.json — it never talks to Lemon Squeezy,
-    so it cannot create a real charge or a real subscription. Revoking is
+    This only ever writes to users.json — it never talks to Whop,
+    so it cannot create a real charge or a real membership. Revoking is
     the same call with "plan": "default".
     """
     admin_error = _require_admin()
@@ -2010,8 +2057,8 @@ def admin_grant_access():
         account["comped"] = plan != "default"  # marks this as an owner-granted freebie, not a real payer
         if plan != "default":
             account["subscription_status"] = "ACTIVE"
-            account["lemonsqueezy_subscription_id"] = None
-            account["lemonsqueezy_tier"] = None
+            account["whop_membership_id"] = None
+            account["whop_tier"] = None
         else:
             account["subscription_status"] = None
         account["subscription_updated_at"] = datetime.utcnow().isoformat()
@@ -2241,11 +2288,11 @@ def select_plan():
     """Lets the signed-in user switch themselves back to the free Default
     plan (e.g. a "downgrade" button in account settings).
 
-    Pro/VIP are no longer grantable through this endpoint — now that Lemon
-    Squeezy is wired up, paid access is only ever granted by a verified
-    /webhooks/lemonsqueezy subscription event (or by /admin/grant-access for
+    Pro/VIP are no longer grantable through this endpoint — now that Whop
+    is wired up, paid access is only ever granted by a verified
+    /webhook/whop membership/payment event (or by /admin/grant-access for
     owner comps). Picking Pro/VIP happens on billing.html, which sends the
-    user to a real Lemon Squeezy checkout instead of calling this route.
+    user to a real Whop checkout instead of calling this route.
     """
     email, auth_error = _require_authenticated_email()
     if auth_error:
@@ -2727,7 +2774,7 @@ def analyze_chart():
             "default"
         ).lower().strip()
 
-        # Never trust a paid plan sent by the browser; Lemon Squeezy subscription state is authoritative.
+        # Never trust a paid plan sent by the browser; Whop subscription state is authoritative.
         plan = _effective_plan_for_email(user_email, requested_plan)
 
         chart = request.files.get("chart")
