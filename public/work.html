@@ -1297,29 +1297,69 @@
             activeProfile === 'guest@vectracore.ai' ? '' : activeProfile;
 
         // Treat the cached localStorage plan as provisional only. Confirm it
-        // against the server-side session on every load — this is what
-        // actually stops a stale/leftover plan (e.g. VIP from a previously
-        // active account) from being used after switching accounts, page
-        // refreshes, or a subscription change made elsewhere.
+        // against the server-side session — this is what actually stops a
+        // stale/leftover plan (e.g. VIP from a previously active account)
+        // from being used after switching accounts, page refreshes, or a
+        // subscription change made elsewhere.
+        //
+        // IMPORTANT: right after a Whop checkout, the browser is redirected
+        // back here *immediately* on payment, but Whop's webhook (the thing
+        // that actually flips users.json to "pro"/"vip") arrives at the
+        // server asynchronously, often a few seconds later. A single check
+        // on page load can easily run before that webhook has landed, see
+        // "default", and — since nothing ever re-checks after that — the
+        // badge/features stay stuck on Default until the user thinks to
+        // manually reload (and sometimes even a reload loses the race).
+        // Poll for a little while instead of checking once, so a just-landed
+        // webhook still gets picked up automatically.
+        function applyServerPlan(data) {
+            if (!data || !data.plan) return false;
+            if (data.email && data.email !== activeProfile) {
+                // Server session belongs to a different email than the UI is
+                // showing — the two are out of sync (e.g. the switch-account
+                // call didn't happen). Trust the server.
+                localStorage.setItem('vectracore_user_email', data.email);
+            }
+            const changed = data.plan !== currentPlan;
+            if (changed) {
+                currentPlan = data.plan;
+                sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
+                localStorage.setItem('vectracore_plan', currentPlan);
+                localStorage.setItem('vectracore_selected_plan', currentPlan);
+                if (typeof renderPlanBadge === 'function') renderPlanBadge(currentPlan);
+                if (typeof refreshCreditsBadge === 'function') refreshCreditsBadge();
+            }
+            return changed;
+        }
+
+        function pollAccountPlan() {
+            // Backs off over roughly 2 minutes: fast at first (webhooks
+            // usually land within a few seconds), then slower. Stops early
+            // the moment the confirmed plan is anything other than
+            // "default" — a real subscriber never needs to keep polling.
+            const delaysMs = [1500, 2000, 3000, 4000, 5000, 8000, 10000, 15000, 20000, 30000];
+            let attempt = 0;
+
+            function tick() {
+                fetch(`${API_BASE_URL}/account`, { credentials: 'include' })
+                    .then((res) => (res.ok ? res.json() : null))
+                    .then((data) => {
+                        applyServerPlan(data);
+                        const confirmedPlan = data && data.plan;
+                        if (confirmedPlan && confirmedPlan !== 'default') return; // upgraded — stop polling
+                        if (attempt >= delaysMs.length) return; // gave it long enough
+                        setTimeout(tick, delaysMs[attempt++]);
+                    })
+                    .catch(() => {
+                        if (attempt >= delaysMs.length) return;
+                        setTimeout(tick, delaysMs[attempt++]);
+                    });
+            }
+            tick();
+        }
+
         if (activeProfile !== 'guest@vectracore.ai') {
-            fetch(`${API_BASE_URL}/account`, { credentials: 'include' })
-                .then((res) => (res.ok ? res.json() : null))
-                .then((data) => {
-                    if (!data || !data.plan) return;
-                    if (data.email && data.email !== activeProfile) {
-                        // Server session belongs to a different email than the
-                        // UI is showing — the two are out of sync (e.g. the
-                        // switch-account call didn't happen). Trust the server.
-                        localStorage.setItem('vectracore_user_email', data.email);
-                    }
-                    if (data.plan !== currentPlan) {
-                        currentPlan = data.plan;
-                        sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
-                        localStorage.setItem('vectracore_plan', currentPlan);
-                        localStorage.setItem('vectracore_selected_plan', currentPlan);
-                    }
-                })
-                .catch(() => { /* best-effort; keep using the cached plan */ });
+            pollAccountPlan();
         }
 
         // --- Known accounts: every email this browser has successfully
@@ -2059,32 +2099,15 @@
         }
 
         // Paint immediately from whatever's cached locally, so the badge
-        // isn't blank while we wait on the network.
+        // isn't blank while we wait on the network. Confirming against the
+        // server — the account record in users.json is the only real source
+        // of truth for what plan someone is on — is handled by
+        // pollAccountPlan() above, which keeps retrying for a while instead
+        // of checking just once, so a Whop webhook that lands a few seconds
+        // late (the exact scenario that used to leave the badge stuck on
+        // Default after a real purchase) still gets picked up.
         renderPlanBadge(currentPlan);
         refreshCreditsBadge();
-
-        // Then confirm against the server — the account record in
-        // users.json is the only source of truth for what plan someone is
-        // actually on. localStorage is just a cache and can go stale (e.g.
-        // after an admin-granted upgrade, a plan change, or a cancellation)
-        // so it must never be trusted on its own for what the UI shows.
-        (async function syncPlanFromServer() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/account?email=${encodeURIComponent(activeProfile)}`, { credentials: 'include' });
-                if (!response.ok) return;
-                const account = await response.json();
-                const confirmedPlan = account.plan || 'default';
-                if (confirmedPlan !== currentPlan) {
-                    currentPlan = confirmedPlan;
-                    sessionsEnabled = currentPlan === 'pro' || currentPlan === 'vip';
-                    localStorage.setItem('vectracore_plan', currentPlan);
-                    renderPlanBadge(currentPlan);
-                    refreshCreditsBadge();
-                }
-            } catch (err) {
-                console.error('Failed to verify plan with server:', err);
-            }
-        })();
 
     </script>
 </body>
