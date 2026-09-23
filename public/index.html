@@ -713,89 +713,6 @@
             .feature-item { flex: 1 1 100%; }
             .modal-content { padding: 28px 22px; }
         }
-
-        /* --- Neptune winrate popup --- */
-        .neptune-popup {
-            position: fixed;
-            left: 20px;
-            bottom: 20px;
-            z-index: 500;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: linear-gradient(160deg, var(--panel-bg), #0A0F24);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
-            padding: 14px 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.45), 0 0 0 1px rgba(139,92,246,0.08);
-            max-width: 280px;
-            opacity: 0;
-            transform: translateY(16px) scale(0.97);
-            transition: opacity 0.45s ease, transform 0.45s ease;
-            pointer-events: none;
-        }
-
-        .neptune-popup.show {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            pointer-events: auto;
-        }
-
-        .neptune-popup .pulse-dot {
-            width: 9px;
-            height: 9px;
-            border-radius: 50%;
-            background: #34D399;
-            flex-shrink: 0;
-            box-shadow: 0 0 0 rgba(52, 211, 153, 0.6);
-            animation: neptune-pulse 2s infinite;
-        }
-
-        @keyframes neptune-pulse {
-            0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
-            70% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
-        }
-
-        .neptune-popup .neptune-text {
-            font-size: 0.82rem;
-            line-height: 1.4;
-            color: var(--text-main);
-        }
-
-        .neptune-popup .neptune-text .neptune-label {
-            display: block;
-            color: var(--text-muted);
-            font-size: 0.72rem;
-            letter-spacing: 0.3px;
-            margin-bottom: 2px;
-        }
-
-        .neptune-popup .neptune-text b {
-            color: #C4B5FD;
-            font-weight: 700;
-        }
-
-        .neptune-popup .neptune-close {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1rem;
-            line-height: 1;
-            cursor: pointer;
-            padding: 2px;
-            margin-left: 2px;
-            flex-shrink: 0;
-            transition: color 0.2s;
-        }
-
-        .neptune-popup .neptune-close:hover {
-            color: var(--text-main);
-        }
-
-        @media (max-width: 480px) {
-            .neptune-popup { left: 14px; right: 14px; max-width: none; bottom: 14px; }
-        }
     </style>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
@@ -850,7 +767,7 @@
             </div>
             <div class="feature-item">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21"/></svg>
-                <div><div class="feature-title">Multi-Asset</div><div class="feature-sub">Forex &middot; Crypto &middot; Indices</div></div>
+                <div><div class="feature-title">Multi-Asset</div><div class="feature-sub">Forex &middot; Stocks &middot; Indices &middot; Crypto</div></div>
             </div>
             <div class="feature-item">
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z"/></svg>
@@ -858,7 +775,7 @@
             </div>
             <div class="feature-item">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11 V7 a4 4 0 0 1 8 0 v4" stroke-linecap="round"/></svg>
-                <div><div class="feature-title">Private &amp; Secure</div><div class="feature-sub">Your data, safe</div></div>
+                <div><div class="feature-title">Private &amp; Secure</div><div class="feature-sub">Your data is never sold</div></div>
             </div>
         </div>
     </main>
@@ -938,7 +855,7 @@
         <div class="workflow-inner">
             <div class="section-eyebrow">EXAMPLE READS</div>
             <h3 class="section-title">What an analysis actually looks like</h3>
-            <p class="section-sub">Three anonymized examples of the layered reasoning — including a case where the answer was WAIT.</p>
+            <p class="section-sub">Three illustrative examples of the layered reasoning — including a case where the answer was WAIT.</p>
 
             <div class="diff-grid">
                 <div class="diff-card">
@@ -957,13 +874,37 @@
         </div>
     </section>
 
+    <section class="workflow-section">
+        <div class="workflow-inner">
+            <div class="section-eyebrow">WHO IT'S FOR</div>
+            <h3 class="section-title">If you can screenshot a chart, you can use VectraCore</h3>
+            <p class="section-sub">No advanced knowledge required to start, and no need to change how you trade.</p>
+
+            <div class="diff-grid">
+                <div class="diff-card">
+                    <h4>Learning to read charts</h4>
+                    <p>See how structure, liquidity and context fit together on your own charts, explained clearly rather than buried in jargon.</p>
+                </div>
+                <div class="diff-card">
+                    <h4>Refining your process</h4>
+                    <p>Check your read against a consistent, layered second opinion, including a straight WAIT when the setup isn't there.</p>
+                </div>
+                <div class="diff-card">
+                    <h4>Already reading structure and liquidity</h4>
+                    <p>A fast, consistent analytical layer that works alongside your own method instead of replacing it.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
     <div class="modal-overlay" id="registration-modal">
         <div class="modal-content">
             <button class="close-btn" id="modal-close" aria-label="Close">&times;</button>
 
             <div class="modal-step" id="step-email">
                 <h3>Unlock <span>VectraCore</span></h3>
-                <p>Enter your email to access our professional terminal workspaces.</p>
+                <p>Enter your email to access your VectraCore workspace.</p>
 
                 <div class="google-btn-wrap" id="google-btn-wrap"></div>
                 <div class="modal-divider"><span>or continue with email</span></div>
@@ -1001,15 +942,6 @@
         </div>
     </div>
 
-    <div class="neptune-popup" id="neptune-popup">
-        <span class="pulse-dot" aria-hidden="true"></span>
-        <div class="neptune-text">
-            <span class="neptune-label">VectraCore &mdash; Neptune 2.1</span>
-            currently at <b>83.9% winrate</b>
-        </div>
-        <button type="button" class="neptune-close" id="neptune-close" aria-label="Dismiss">&times;</button>
-    </div>
-
     <footer>
         <div class="footer-main">
             <div class="footer-brand">
@@ -1017,7 +949,7 @@
                     <svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     <h1>Vectra<span>Core</span></h1>
                 </div>
-                <p>Structure-first, liquidity-aware chart analysis for active currency, stock, and index traders.</p>
+                <p>Structure-first, liquidity-aware chart analysis for traders at every level.</p>
                 <div class="footer-social">
                     <a href="https://www.instagram.com/vectracoreofficial?igsh=bGN0ZjhvMnBjajcw" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1056,7 +988,7 @@
         </div>
 
         <div class="footer-bottom">
-            &copy; 2026 VectraCore Research. Designed for active currency, stock, and index traders.
+            &copy; 2026 VectraCore Research. Designed for traders at every level.
         </div>
     </footer>
 
@@ -1464,25 +1396,6 @@
             codeErrorText.style.display = 'none';
             showStep('email');
         });
-
-        // --- Neptune winrate popup ---
-        // Shows a couple seconds after load so it doesn't compete with the
-        // page's own entrance; stays dismissed for the rest of the browser
-        // session once closed so it doesn't nag on every page view.
-        (function () {
-            const popup = document.getElementById('neptune-popup');
-            const closeBtn = document.getElementById('neptune-close');
-            if (!popup || !closeBtn) return;
-
-            if (sessionStorage.getItem('vectracore_neptune_popup_dismissed')) return;
-
-            setTimeout(() => popup.classList.add('show'), 1400);
-
-            closeBtn.addEventListener('click', () => {
-                popup.classList.remove('show');
-                sessionStorage.setItem('vectracore_neptune_popup_dismissed', '1');
-            });
-        })();
     </script>
 
 </body>
