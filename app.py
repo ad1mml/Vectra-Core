@@ -52,7 +52,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from prompts.followup_prompt import FOLLOWUP_PROMPT as FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
-from market_facts import facts_block as _facts_block
+from market_facts import facts_block as _facts_block, facts_dict as _facts_dict
 from prompts.default_prompt import DEFAULT_PROMPT
 from prompts.pro_prompt import PRO_PROMPT
 import requests
@@ -1426,10 +1426,10 @@ live price/chart access when this section is present.
 FACTS_TIMEFRAMES = ("1h", "4h", "1day")
 
 
-def _build_market_facts_block(symbol: str) -> str:
-    """Fetch 1H/4H/Daily candles in parallel and turn them into a verified
-    facts block (swings, ATR, trend, premium/discount). Never raises:
-    returns "" if anything fails, so the analysis still runs without it."""
+def _get_market_facts(symbol: str):
+    """Fetch 1H/4H/Daily candles in parallel. Returns (prompt_block, facts)
+    where facts is {tf: {...}} for code checks. Never raises: returns
+    ("", None) if anything fails, so the analysis still runs without it."""
     try:
         from concurrent.futures import ThreadPoolExecutor
 
@@ -1444,18 +1444,24 @@ def _build_market_facts_block(symbol: str) -> str:
                 if candles:
                     per_tf[tf] = candles
         if not per_tf:
-            return ""
+            return "", None
         block = _facts_block(per_tf, symbol)
         if not block:
-            return ""
-        return (
+            return "", None
+        framed = (
             "\n==========================================================\n"
             + block
             + "\n==========================================================\n"
         )
+        return framed, (_facts_dict(per_tf) or None)
     except Exception as e:
         app.logger.error("market facts failed for %s: %s", symbol, e)
-        return ""
+        return "", None
+
+
+def _build_market_facts_block(symbol: str) -> str:
+    """Prompt-block only (used by the /test-twelvedata route)."""
+    return _get_market_facts(symbol)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -1716,7 +1722,7 @@ def _calc_rr(entry, stop_loss, take_profit):
     return reward / risk
 
 
-def _downgrade_to_wait(result, rr, reason="unusable"):
+def _downgrade_to_wait(result, rr, reason="unusable", custom_note=None, custom_detail=None):
     """Converts a Buy/Sell result dict to a WAIT result dict in place.
     Preserves every other field (chart read, structure, etc.) untouched —
     only decision-dependent fields change. Leaves a trail in 'reasoning'
@@ -1777,6 +1783,8 @@ def _downgrade_to_wait(result, rr, reason="unusable"):
             f"No amount of structural confluence changes that math, so this isn't "
             f"a tradeable setup right now."
         )
+    elif custom_note:
+        gate_note = custom_note
     else:
         gate_note = (
             f"A {original_decision or 'trade'} setup formed near {entry or 'the current level'}, "
@@ -1798,6 +1806,8 @@ def _downgrade_to_wait(result, rr, reason="unusable"):
         rejection_detail = (
             f"rejected, reward-to-risk was only {rr:.2f}:1, below the 1:1 floor"
         )
+    elif custom_detail:
+        rejection_detail = custom_detail
     else:
         rejection_detail = "rejected, entry/SL couldn't be parsed into a usable risk"
     result["reasoning"] = (
@@ -1805,6 +1815,88 @@ def _downgrade_to_wait(result, rr, reason="unusable"):
         f"SL {sl}, TP {tp} — {rejection_detail}.) {existing_reasoning}"
     ).strip()
 
+    return result
+
+
+# Price must be within this many DAILY ATRs of the live price to be believable.
+# Catches misread axis digits (e.g. 1.1194 read as 1.1914).
+MAX_ENTRY_DISTANCE_DAILY_ATR = 5.0
+
+
+def _sanity_check_levels(result, facts=None):
+    """Code-side checks on a Buy/Sell result. Never edits levels.
+      1. Level sides (all plans, no data needed): Buy needs SL < entry < TP,
+         Sell needs TP < entry < SL. Otherwise -> Wait.
+      2. Live price check (only when real candles were fetched): entry, SL
+         and TP must be near the real market price, else -> Wait.
+      3. Higher-timeframe conflict (only with real candles): NOT a downgrade,
+         just adds a plain-language "context_warning" the user can see.
+    Wait results pass through untouched."""
+    if not isinstance(result, dict):
+        return result
+    decision = str(result.get("decision", "")).strip().lower()
+    if decision not in ("buy", "sell"):
+        return result
+
+    e = _parse_price(result.get("entry"))
+    sl = _parse_price(result.get("stop_loss"))
+    tp = _parse_price(result.get("take_profit"))
+
+    # 1) sides
+    if e is not None and sl is not None and tp is not None:
+        sides_ok = (sl < e < tp) if decision == "buy" else (tp < e < sl)
+        if not sides_ok:
+            app.logger.warning(
+                "LEVEL CHECK: %s with wrong sides -> Wait (entry=%s sl=%s tp=%s)",
+                decision, e, sl, tp,
+            )
+            note = (
+                f"A {decision} idea formed, but the levels the analysis produced "
+                f"were not consistent (stop-loss and take-profit were not on the "
+                f"correct sides of the entry for a {decision}), so no trade is "
+                f"shown. Upload the chart again for a fresh read."
+            )
+            return _downgrade_to_wait(
+                result, None, reason="bad_levels", custom_note=note,
+                custom_detail="rejected, stop-loss/take-profit were on the wrong sides of entry",
+            )
+
+    if not facts:
+        return result
+
+    # 2) live price check
+    daily = facts.get("1day") or {}
+    ref = daily or next(iter(facts.values()))
+    live = ref.get("price")
+    d_atr = daily.get("atr") or ref.get("atr")
+    if live and d_atr and e is not None:
+        limit = MAX_ENTRY_DISTANCE_DAILY_ATR * d_atr
+        prices = [p for p in (e, sl, tp) if p is not None]
+        if any(abs(p - live) > limit for p in prices):
+            app.logger.warning(
+                "LEVEL CHECK: levels far from live price %s -> Wait (entry=%s sl=%s tp=%s)",
+                live, e, sl, tp,
+            )
+            note = (
+                f"A {decision} idea formed, but its price levels are far from where "
+                f"the market is actually trading right now ({live}). The price axis "
+                f"was probably misread, so no trade is shown. Try a clearer or "
+                f"closer-cropped screenshot."
+            )
+            return _downgrade_to_wait(
+                result, None, reason="price_mismatch", custom_note=note,
+                custom_detail=f"rejected, levels were too far from live price {live}",
+            )
+
+    # 3) higher-timeframe conflict (warning only)
+    htf = (facts.get("1day") or {}).get("trend", "")
+    if (decision == "buy" and htf.startswith("bearish")) or (
+        decision == "sell" and htf.startswith("bullish")
+    ):
+        result["context_warning"] = (
+            f"The daily trend is {htf.split(' ')[0]}, which goes against this "
+            f"{decision}. Treat it as a counter-trend trade."
+        )
     return result
 
 
@@ -2946,6 +3038,7 @@ news specifically.
             # named the asset in their caption. Otherwise the model still
             # reads the chart purely visually, as before.
             chart_market_data_block = ""
+            chart_facts = None
             if plan == "vip":
                 caption_symbol = _detect_symbol(question)
                 if caption_symbol:
@@ -2966,9 +3059,8 @@ news specifically.
                             "Protocol) and mention the discrepancy plainly "
                             "rather than silently picking one.",
                         )
-                    chart_market_data_block += _build_market_facts_block(
-                        caption_symbol
-                    )
+                    _facts_text, chart_facts = _get_market_facts(caption_symbol)
+                    chart_market_data_block += _facts_text
 
             SYSTEM_PROMPT = f"""
 {ACTIVE_PROMPT}
@@ -3038,6 +3130,7 @@ USER REQUEST
             )
 
             result = _safe_json(response)
+            result = _sanity_check_levels(result, chart_facts)
             result = _enforce_min_rr(result)
             result = _no_na_result(result)
 

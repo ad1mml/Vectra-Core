@@ -91,6 +91,16 @@ def analyze(candles, timeframe):
     }
 
 
+def facts_dict(per_tf):
+    """Same facts as facts_block, but as a dict {tf: facts} for code checks."""
+    out = {}
+    for tf, candles in per_tf.items():
+        f = analyze(candles, tf)
+        if f:
+            out[tf] = f
+    return out
+
+
 def facts_block(per_tf, symbol=""):
     """per_tf = {"1h": candles, "4h": candles, "1day": candles}
     Returns text to paste into the AI prompt, or "" if no data."""
