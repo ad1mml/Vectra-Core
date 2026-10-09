@@ -807,9 +807,17 @@
         .recents-new-btn:hover { background-color: rgba(139, 92, 246, 0.18); }
 
         .recents-sidebar.collapsed .recents-new-btn {
+            width: 38px;
+            height: 38px;
             margin: 12px 8px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             text-align: center;
-            padding: 8px 0;
+            font-size: 1.25rem;
+            line-height: 1;
+            white-space: nowrap;
         }
 
         .recents-body {
@@ -1969,6 +1977,9 @@
             }
             const collapsed = recentsSidebar.classList.toggle('collapsed');
             recentsToggleBtn.innerHTML = collapsed ? '&#8677;' : '&#8676;';
+            recentsNewBtn.textContent = collapsed ? '+' : '+ New Analysis';
+            recentsNewBtn.title = collapsed ? 'New analysis' : 'New Analysis';
+            recentsNewBtn.setAttribute('aria-label', 'New analysis');
         });
 
         // --- MOBILE RECENTS DRAWER ---
