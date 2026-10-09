@@ -29,7 +29,8 @@ PREDICTION_FIELDS = (
     "timeframe", "chart_timeframe",
     "direction", "signal", "action", "decision", "final_decision",
     "entry", "entry_price", "stop_loss", "sl",
-    "take_profit", "take_profit_1", "tp", "target",
+    "take_profit", "take_profit_1", "take_profit_2", "take_profit_3", "tp", "target",
+    "current_price", "institutional_score", "market_regime", "context_warning",
     "confidence", "probability", "buy_probability", "sell_probability",
     "risk_reward", "rr", "status",
     "analysis", "reasoning",
@@ -219,6 +220,10 @@ def _normalize_prediction(result: Mapping[str, Any]) -> dict[str, Any]:
                 prediction["take_profit"] = target
 
     _normalize_direction(prediction)
+
+    # Make a missing decision explicit instead of leaving the evaluator to guess.
+    if prediction and not _decision_text(prediction):
+        prediction["logging_status"] = "decision_missing"
 
     # A few app responses use alternate field names. Preserve originals while
     # filling canonical aliases only when the canonical field is absent.

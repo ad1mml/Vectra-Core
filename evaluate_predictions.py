@@ -8,6 +8,7 @@ This is a historical measurement tool, not a profitability guarantee.
 Usage:
     python3 evaluate_predictions.py
     python3 evaluate_predictions.py --days 30
+    python3 evaluate_predictions.py --days 30 --exclude-lines 1,2
 
 Environment:
     TWELVE_DATA or TWELVE_DATA_KEY, or a TWELVE_DATA entry in .env
@@ -21,13 +22,14 @@ Important limitations:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -216,7 +218,7 @@ def parse_candle_datetime(value: Any):
     return parse_timestamp(text)
 
 
-def fetch_candles(symbol, interval, api_key):
+def fetch_candles(symbol, interval, api_key, start_date=None):
     """Fetch the latest bounded candle set; filtering is per prediction later."""
     try:
         import requests
@@ -234,6 +236,10 @@ def fetch_candles(symbol, interval, api_key):
         "timezone": "UTC",
         "order": "ASC",
     }
+    if start_date is not None:
+        # With order=ASC, Twelve Data returns the first OUTPUTSIZE candles at/after
+        # start_date, so the window from the oldest prediction onward is covered.
+        params["start_date"] = start_date.strftime("%Y-%m-%d %H:%M:%S")
     response = requests.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     payload = response.json()
@@ -351,15 +357,19 @@ def evaluate_one(record: dict, prediction: dict, candles: list, timestamp):
     }
 
 
-def parse_days(argv):
-    if not argv:
-        return DEFAULT_DAYS
-    if len(argv) == 2 and argv[0] == "--days":
-        try:
-            return max(1, min(MAX_DAYS, int(argv[1])))
-        except ValueError as exc:
-            raise ValueError(f"--days must be an integer from 1 to {MAX_DAYS}") from exc
-    raise ValueError("Usage: python3 evaluate_predictions.py [--days 30]")
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description="Evaluate logged VectraCore predictions.")
+    parser.add_argument("--days", type=int, default=DEFAULT_DAYS,
+                        help=f"lookback window in days (1-{MAX_DAYS}, default {DEFAULT_DAYS})")
+    parser.add_argument("--exclude-lines", default="",
+                        help="comma-separated log line numbers to ignore (e.g. test records): 1,2")
+    args = parser.parse_args(argv)
+    args.days = max(1, min(MAX_DAYS, args.days))
+    try:
+        args.excluded = {int(x) for x in args.exclude_lines.split(",") if x.strip()}
+    except ValueError:
+        parser.error("--exclude-lines must be comma-separated integers")
+    return args
 
 
 def summarize(details):
@@ -373,7 +383,8 @@ def summarize(details):
         })
         outcome = item.get("outcome")
         if outcome in VALID_OUTCOMES:
-            group[outcome] += 1
+            key = {"win": "wins", "loss": "losses", "error": "errors"}.get(outcome, outcome)
+            group[key] += 1
         if outcome in {"win", "loss"}:
             group["r_values"].append(float(item["r_multiple"]))
 
@@ -393,11 +404,8 @@ def summarize(details):
 
 
 def main():
-    try:
-        days = parse_days(sys.argv[1:])
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
+    args = parse_args(sys.argv[1:])
+    days = args.days
 
     load_dotenv()
     api_key = (os.environ.get("TWELVE_DATA") or os.environ.get("TWELVE_DATA_KEY") or "").strip()
@@ -417,7 +425,13 @@ def main():
     candle_cache = {}
     request_count = 0
 
+    # Ask the provider for candles starting a day before the lookback window so
+    # short timeframes still cover every prediction we evaluate.
+    candle_start = now - timedelta(days=days + 1)
+
     for line_number, record in rows:
+        if line_number in args.excluded:
+            continue
         prediction = record.get("prediction", {})
         if not isinstance(prediction, dict):
             prediction = {}
@@ -452,7 +466,7 @@ def main():
         cache_key = (symbol, timeframe)
         try:
             if cache_key not in candle_cache:
-                candle_cache[cache_key] = fetch_candles(symbol, timeframe, api_key)
+                candle_cache[cache_key] = fetch_candles(symbol, timeframe, api_key, candle_start)
                 request_count += 1
                 if request_count:
                     time.sleep(REQUEST_PAUSE_SECONDS)
@@ -473,6 +487,7 @@ def main():
         "provider": "Twelve Data",
         "candle_timezone_requested": "UTC",
         "candle_limit_per_symbol_timeframe": OUTPUTSIZE,
+        "excluded_log_lines": sorted(args.excluded),
         "summary_by_plan": summary,
         "predictions": details,
         "methodology": [

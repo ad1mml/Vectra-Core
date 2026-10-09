@@ -1645,6 +1645,31 @@ def _safe_json(response):
             "The AI's response couldn't be parsed this time — please try again."
         )
 
+def _alias_take_profit(result):
+    """VIP's schema uses take_profit_1; downstream checks read take_profit."""
+    if isinstance(result, dict):
+        tp = result.get("take_profit")
+        if tp is None or str(tp).strip() == "":
+            tp1 = result.get("take_profit_1")
+            if tp1 is not None and str(tp1).strip() != "":
+                result["take_profit"] = tp1
+    return result
+
+
+def _validate_chart_result(result):
+    """Return (ok, problem). Never invents a decision."""
+    if not isinstance(result, dict):
+        return False, "response was not a JSON object"
+    decision = str(result.get("decision", "")).strip().lower()
+    if not re.match(r"^(buy|sell|wait|hold)\b", decision):
+        return False, "missing or unrecognized decision"
+    if decision.startswith(("buy", "sell")):
+        for key in ("entry", "stop_loss", "take_profit"):
+            if _parse_price(result.get(key)) is None:
+                return False, f"{key} missing on a {decision} decision"
+    return True, None
+
+
 # ---------------------------------------------------------------------------
 # RISK/REWARD ANNOTATION + FLOOR (no forcing, no fabrication)
 # ---------------------------------------------------------------------------
@@ -3124,7 +3149,7 @@ USER REQUEST
     # Caps how long the JSON response is allowed to be — generating
     # output takes real time regardless of thinking_level, so this
     # keeps responses from running unnecessarily long.
-    max_output_tokens=2048,
+    max_output_tokens=4096,
 
     thinking_config=types.ThinkingConfig(
         thinking_level=PLAN_SETTINGS["thinking_level"]
@@ -3135,6 +3160,23 @@ USER REQUEST
             )
 
             result = _safe_json(response)
+            result = _alias_take_profit(result)
+
+            ok, problem = _validate_chart_result(result)
+            if not ok:
+                app.logger.error("Chart analysis rejected: %s", problem)
+                # Refund the chart credit consumed by check_user_limits.
+                if plan != "vip" and user_email in usage:
+                    usage[user_email]["charts_used"] = max(
+                        0, usage[user_email].get("charts_used", 1) - 1
+                    )
+                    save_usage(usage)
+                return jsonify({
+                    "success": False,
+                    "error": "The AI returned an incomplete analysis. "
+                             "Please upload the chart again \u2014 this attempt wasn't counted.",
+                }), 502
+
             result = _sanity_check_levels(result, chart_facts)
             result = _enforce_min_rr(result)
             result = _no_na_result(result)
