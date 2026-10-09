@@ -52,10 +52,31 @@ def log_prediction(user_email: str, plan: str, result: Mapping[str, Any]) -> Non
         "risk_reward", "rr", "status", "analysis", "reasoning",
     )
     prediction = {
-        key: _safe_value(result[key])
-        for key in prediction_fields
-        if key in result
+    key: _safe_value(result[key])
+    for key in prediction_fields
+    if key in result
     }
+
+    # Normalize the timeframe when it is present.
+    timeframe = prediction.get("timeframe")
+
+    if isinstance(timeframe, str):
+        timeframe = timeframe.strip().lower()
+
+        aliases = {
+            "1m": "1min",
+            "5m": "5min",
+            "15": "15min",
+            "15m": "15min",
+            "30m": "30min",
+            "1h": "1h",
+            "4h": "4h",
+            "1d": "1day",
+        }
+
+    prediction["timeframe"] = aliases.get(
+        timeframe, timeframe
+    )
 
     # If the result uses a different schema, keep a small safe subset so the
     # record is still useful without copying the entire response/session.
