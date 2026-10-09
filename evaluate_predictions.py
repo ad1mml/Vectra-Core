@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
 """
-VectraCore prediction evaluator (read-only).
+VectraCore prediction evaluator.
 
-Reads data/predictions.jsonl written by benchmark.py, fetches candles from
-Twelve Data, and estimates whether TP or SL was hit first AFTER the logged
-prediction timestamp.
+Evaluates logged Buy/Sell predictions against subsequent Twelve Data candles.
+This is a historical measurement tool, not a profitability guarantee.
 
-Usage from the project directory:
+Usage:
     python3 evaluate_predictions.py
+    python3 evaluate_predictions.py --days 30
 
-Requirements:
-- benchmark.py has created data/predictions.jsonl
-- TWELVE_DATA is set in the environment or in a .env file
-- `requests` is installed (normally already used by the app)
+Environment:
+    TWELVE_DATA or TWELVE_DATA_KEY, or a TWELVE_DATA entry in .env
 
-This script does not modify app.py or predictions.jsonl. It writes a report
-to data/benchmark_report.json. Predictions with missing/invalid levels,
-unknown timeframe, or ambiguous same-candle TP/SL touches are not counted
-as wins or losses.
+Important limitations:
+- Intrabar order is unknowable from OHLC candles when SL and TP are both hit.
+- This evaluator excludes the candle whose start timestamp is at/before the
+  prediction timestamp to avoid counting price movement that may predate it.
+- Twelve Data's outputsize limits history. Insufficient candle coverage is
+  reported separately and never silently counted as a pending trade.
 """
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -36,29 +37,42 @@ DATA_DIR = BASE_DIR / "data"
 LOG_FILE = DATA_DIR / "predictions.jsonl"
 REPORT_FILE = DATA_DIR / "benchmark_report.json"
 API_URL = "https://api.twelvedata.com/time_series"
+DEFAULT_DAYS = 30
+MAX_DAYS = 365
+OUTPUTSIZE = 5000
+REQUEST_TIMEOUT = 30
+REQUEST_PAUSE_SECONDS = 0.15
 
-# Twelve Data interval names in minutes. Extend if your app logs other formats.
 TIMEFRAME_MAP = {
     "1": "1min", "1m": "1min", "1min": "1min",
     "5": "5min", "5m": "5min", "5min": "5min",
     "15": "15min", "15m": "15min", "15min": "15min",
     "30": "30min", "30m": "30min", "30min": "30min",
-    "60": "1h", "1h": "1h", "1hr": "1h",
-    "120": "2h", "2h": "2h",
-    "240": "4h", "4h": "4h",
+    "45": "45min", "45m": "45min", "45min": "45min",
+    "60": "1h", "60m": "1h", "1h": "1h", "1hr": "1h",
+    "120": "2h", "120m": "2h", "2h": "2h",
+    "240": "4h", "240m": "4h", "4h": "4h",
     "D": "1day", "1d": "1day", "1day": "1day",
     "W": "1week", "1w": "1week", "1week": "1week",
 }
-MISSING = {"", "n/a", "na", "none", "null", "unknown", "-", "not available for this chart"}
+MISSING = {
+    "", "n/a", "na", "none", "null", "unknown", "-", "not available for this chart",
+    "not visible on this chart", "not available", "not provided",
+}
+VALID_OUTCOMES = {
+    "win", "loss", "pending", "ambiguous", "not_evaluable",
+    "no_trade", "insufficient_data", "error",
+}
 
-def load_dotenv():
-    """Small .env reader; does not print or expose any secrets."""
-    path = BASE_DIR / ".env"
-    if not path.exists():
+
+def load_dotenv() -> None:
+    """Load simple KEY=value entries without overriding environment variables."""
+    env_path = BASE_DIR / ".env"
+    if not env_path.exists():
         return
     try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
@@ -66,64 +80,112 @@ def load_dotenv():
             value = value.strip().strip('"').strip("'")
             if key and key not in os.environ:
                 os.environ[key] = value
-    except OSError:
-        pass
+    except OSError as exc:
+        print(f"WARNING: Could not read .env ({exc}).", file=sys.stderr)
+
 
 def parse_number(value: Any):
+    """Parse a numeric level without guessing prices from arbitrary prose."""
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
-    s = str(value).strip()
-    if s.lower() in MISSING:
+        number = float(value)
+        return number if math.isfinite(number) else None
+    text = str(value).strip()
+    if text.lower() in MISSING:
         return None
-    # Avoid accidentally interpreting arbitrary text as a price.
-    s = re.sub(r"^[\s$€£]+", "", s)
-    s = s.replace(",", "")
-    match = re.fullmatch(r"[-+]?\d*\.?\d+", s)
-    if not match:
+    text = re.sub(r"^[\s$€£]+", "", text).replace(",", "")
+    if not re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", text):
         return None
     try:
-        return float(s)
+        number = float(text)
+        return number if math.isfinite(number) else None
     except ValueError:
         return None
+
 
 def parse_timestamp(value: Any):
     if not value:
         return None
     try:
-        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            # benchmark.py writes UTC ISO timestamps. Treat naive values as UTC.
+            # benchmark.py writes ISO UTC timestamps; naive legacy values use UTC.
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return None
 
-def get_field(record, prediction, *names):
+
+def get_field(record: dict, prediction: dict, *names):
+    """Read prediction fields first, then legacy top-level fields."""
     for source in (prediction, record):
         if not isinstance(source, dict):
             continue
         for name in names:
             value = source.get(name)
-            if value is not None and str(value).strip() != "":
+            if value is not None and str(value).strip():
                 return value
     return None
+
 
 def normalize_symbol(value):
     if value is None:
         return None
-    symbol = str(value).strip().upper().replace(" ", "")
-    if symbol.lower() in MISSING or not symbol:
+    symbol = str(value).strip().upper()
+    if symbol.lower() in MISSING:
         return None
-    return symbol
+    # Remove whitespace only; preserve slash/dash separators accepted by Twelve Data.
+    symbol = re.sub(r"\s+", "", symbol)
+    return symbol or None
+
+
+def normalize_decision(record: dict, prediction: dict) -> str:
+    """Return buy/sell/wait/unknown, preferring explicit normalized fields."""
+    for field in ("direction", "signal", "action", "decision", "final_decision"):
+        value = get_field(record, prediction, field)
+        if value is None:
+            continue
+        text = str(value).strip().lower()
+        if re.match(r"^(buy|long)\b", text):
+            return "buy"
+        if re.match(r"^(sell|short)\b", text):
+            return "sell"
+        if re.match(r"^(hold|wait|no[- ]trade|no trade|skip)\b", text):
+            return "wait"
+    return "unknown"
+
+
+def extract_labeled_price(text: str, labels: tuple[str, ...]):
+    """Extract only a number immediately following a recognized level label."""
+    for label in labels:
+        pattern = (
+            r"(?i)(?:\b" + label + r"\b)\s*(?:is|at|:|=)?\s*"
+            r"(?:price\s*)?[$€£]?\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))"
+        )
+        match = re.search(pattern, text)
+        if match:
+            value = parse_number(match.group(1))
+            if value is not None:
+                return value
+    return None
+
+
+def resolve_level(record: dict, prediction: dict, fields: tuple[str, ...],
+                  decision_text: str, labels: tuple[str, ...]):
+    value = parse_number(get_field(record, prediction, *fields))
+    if value is not None:
+        return value
+    return extract_labeled_price(decision_text, labels)
+
 
 def load_records():
     if not LOG_FILE.exists():
-        print(f"ERROR: prediction log not found: {LOG_FILE}")
-        print("First make sure benchmark.py has logged at least one prediction.")
-        sys.exit(1)
+        raise FileNotFoundError(
+            f"Prediction log not found: {LOG_FILE}. Ensure benchmark.py has logged predictions."
+        )
     records = []
+    malformed = 0
     with LOG_FILE.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             if not line.strip():
@@ -132,70 +194,134 @@ def load_records():
                 row = json.loads(line)
                 if isinstance(row, dict):
                     records.append((line_number, row))
+                else:
+                    malformed += 1
+                    print(f"WARNING: ignoring non-object JSON on line {line_number}")
             except json.JSONDecodeError:
+                malformed += 1
                 print(f"WARNING: skipping malformed JSON on line {line_number}")
-    return records
+    return records, malformed
 
-def fetch_candles(symbol, interval, api_key, start_dt, end_dt):
+
+def parse_candle_datetime(value: Any):
+    """Twelve Data requests below explicitly ask for UTC timestamps."""
+    if not value:
+        return None
+    text = str(value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return parse_timestamp(text)
+
+
+def fetch_candles(symbol, interval, api_key):
+    """Fetch the latest bounded candle set; filtering is per prediction later."""
     try:
         import requests
-    except ImportError:
-        print("ERROR: Python package 'requests' is missing. Install it in your PythonAnywhere virtualenv.")
-        sys.exit(1)
+    except ImportError as exc:
+        raise RuntimeError(
+            "Python package 'requests' is missing in this environment."
+        ) from exc
 
-    # Fetch a bounded number of candles and then filter strictly to timestamps
-    # after the prediction. We intentionally don't count the candle containing
-    # the prediction timestamp, as its high/low may have happened beforehand.
     params = {
         "symbol": symbol,
         "interval": interval,
-        "outputsize": 5000,
+        "outputsize": OUTPUTSIZE,
         "apikey": api_key,
         "format": "JSON",
+        "timezone": "UTC",
+        "order": "ASC",
     }
-    response = requests.get(API_URL, params=params, timeout=30)
+    response = requests.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     payload = response.json()
-    if not isinstance(payload, dict) or "values" not in payload:
-        message = payload.get("message", "Unexpected Twelve Data response") if isinstance(payload, dict) else "Unexpected API response"
+    if not isinstance(payload, dict):
+        raise RuntimeError("Unexpected Twelve Data response type.")
+    if "values" not in payload:
+        message = payload.get("message") or payload.get("code") or "No candle values returned"
         raise RuntimeError(str(message)[:300])
 
     candles = []
-    for item in payload.get("values", []):
+    for item in payload.get("values") or []:
         try:
-            dt = datetime.strptime(item["datetime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            candle = {
-                "time": dt,
-                "open": float(item["open"]),
-                "high": float(item["high"]),
-                "low": float(item["low"]),
-                "close": float(item["close"]),
-            }
-            if start_dt < dt <= end_dt:
-                candles.append(candle)
-        except (KeyError, ValueError, TypeError):
+            dt = parse_candle_datetime(item.get("datetime"))
+            open_price = parse_number(item.get("open"))
+            high = parse_number(item.get("high"))
+            low = parse_number(item.get("low"))
+            close = parse_number(item.get("close"))
+            if dt is None or None in (open_price, high, low, close):
+                continue
+            if high < low or high < max(open_price, close) or low > min(open_price, close):
+                continue
+            candles.append({
+                "time": dt, "open": open_price, "high": high,
+                "low": low, "close": close,
+            })
+        except (AttributeError, TypeError, ValueError):
             continue
-    candles.sort(key=lambda c: c["time"])
-    return candles
 
-def evaluate_one(record, prediction, candles):
-    decision = str(get_field(record, prediction, "decision", "direction", "signal", "action") or "").strip().lower()
-    entry = parse_number(get_field(record, prediction, "entry", "entry_price"))
-    sl = parse_number(get_field(record, prediction, "stop_loss", "sl"))
-    tp = parse_number(get_field(record, prediction, "take_profit", "target", "tp"))
-    if decision not in {"buy", "long", "sell", "short"}:
-        return {"outcome": "not_evaluable", "reason": f"decision is {decision or 'missing/Wait'}"}
+    # Deduplicate timestamps defensively, then sort oldest-first.
+    by_time = {candle["time"]: candle for candle in candles}
+    return sorted(by_time.values(), key=lambda candle: candle["time"])
+
+
+def evaluate_one(record: dict, prediction: dict, candles: list, timestamp):
+    decision = normalize_decision(record, prediction)
+    if decision == "wait":
+        return {"outcome": "no_trade", "reason": "explicit Hold/Wait/no-trade decision"}
+    if decision == "unknown":
+        return {"outcome": "not_evaluable", "reason": "missing or unrecognized Buy/Sell decision"}
+
+    combined_text = " | ".join(
+        str(get_field(record, prediction, field) or "")
+        for field in ("decision", "final_decision", "analysis", "reasoning")
+    )
+    entry = resolve_level(
+        record, prediction, ("entry", "entry_price"), combined_text,
+        ("entry", "entry price"),
+    )
+    sl = resolve_level(
+        record, prediction, ("stop_loss", "sl"), combined_text,
+        ("stop loss", "stop-loss", "stop", "sl"),
+    )
+    tp = resolve_level(
+        record, prediction, ("take_profit", "take_profit_1", "target", "tp"),
+        combined_text, ("take profit", "take-profit", "take_profit", "target", "tp"),
+    )
     if entry is None or sl is None or tp is None:
         return {"outcome": "not_evaluable", "reason": "missing or non-numeric entry/SL/TP"}
-    side = "buy" if decision in {"buy", "long"} else "sell"
-    if (side == "buy" and not (sl < entry < tp)) or (side == "sell" and not (tp < entry < sl)):
-        return {"outcome": "not_evaluable", "reason": "levels do not match trade direction"}
+    if min(entry, sl, tp) <= 0:
+        return {"outcome": "not_evaluable", "reason": "price levels must be positive"}
+    if decision == "buy" and not (sl < entry < tp):
+        return {"outcome": "not_evaluable", "reason": "Buy levels must satisfy SL < entry < TP"}
+    if decision == "sell" and not (tp < entry < sl):
+        return {"outcome": "not_evaluable", "reason": "Sell levels must satisfy TP < entry < SL"}
 
     risk = abs(entry - sl)
-    if risk <= 0:
-        return {"outcome": "not_evaluable", "reason": "zero risk distance"}
-    for candle in candles:
-        if side == "buy":
+    if not math.isfinite(risk) or risk <= 0:
+        return {"outcome": "not_evaluable", "reason": "invalid or zero risk distance"}
+
+    post_candles = [c for c in candles if timestamp < c["time"]]
+    # If the provider returned its full requested limit and the prediction is
+    # older than the oldest available candle, history may be truncated.
+    # A short candle list is not sufficient evidence of truncation.
+    if candles and len(candles) >= OUTPUTSIZE and timestamp < candles[0]["time"]:
+        return {
+            "outcome": "insufficient_data",
+            "reason": "prediction predates earliest candle available from provider",
+            "earliest_candle": candles[0]["time"].isoformat(),
+        }
+
+    if not post_candles:
+        return {
+            "outcome": "pending",
+            "reason": "no complete candle starting after prediction timestamp is available",
+        }
+
+    for candle in post_candles:
+        if decision == "buy":
             sl_hit = candle["low"] <= sl
             tp_hit = candle["high"] >= tp
         else:
@@ -205,89 +331,54 @@ def evaluate_one(record, prediction, candles):
         if sl_hit and tp_hit:
             return {
                 "outcome": "ambiguous",
-                "reason": "SL and TP both touched in the same candle; intrabar order unknown",
+                "reason": "SL and TP touched in the same candle; intrabar order is unknown",
                 "candle_time": candle["time"].isoformat(),
             }
         if sl_hit:
-            return {"outcome": "loss", "r_multiple": -1.0, "candle_time": candle["time"].isoformat()}
+            return {
+                "outcome": "loss", "r_multiple": -1.0,
+                "candle_time": candle["time"].isoformat(),
+            }
         if tp_hit:
-            reward = abs(tp - entry)
-            return {"outcome": "win", "r_multiple": reward / risk, "candle_time": candle["time"].isoformat()}
-    return {"outcome": "pending", "reason": "neither SL nor TP touched in available post-prediction candles"}
+            return {
+                "outcome": "win", "r_multiple": round(abs(tp - entry) / risk, 8),
+                "candle_time": candle["time"].isoformat(),
+            }
+    return {
+        "outcome": "pending",
+        "reason": "neither SL nor TP touched in available post-prediction candles",
+        "post_prediction_candles": len(post_candles),
+    }
 
-def main():
-    load_dotenv()
-    api_key = (os.environ.get("TWELVE_DATA") or os.environ.get("TWELVE_DATA_KEY") or "").strip()
-    if not api_key:
-        print("ERROR: TWELVE_DATA key not found in environment or .env. The key was not printed.")
-        sys.exit(1)
 
-    rows = load_records()
-    # Optional --days N controls the maximum age of predictions to evaluate.
-    days = 30
-    if len(sys.argv) >= 3 and sys.argv[1] == "--days":
+def parse_days(argv):
+    if not argv:
+        return DEFAULT_DAYS
+    if len(argv) == 2 and argv[0] == "--days":
         try:
-            days = max(1, min(365, int(sys.argv[2])))
-        except ValueError:
-            print("Usage: python3 evaluate_predictions.py [--days 30]")
-            sys.exit(2)
-    now = datetime.now(timezone.utc)
-    oldest_allowed = now.timestamp() - days * 86400
-    details = []
-    cache = {}
-    skipped = 0
+            return max(1, min(MAX_DAYS, int(argv[1])))
+        except ValueError as exc:
+            raise ValueError(f"--days must be an integer from 1 to {MAX_DAYS}") from exc
+    raise ValueError("Usage: python3 evaluate_predictions.py [--days 30]")
 
-    for line_number, record in rows:
-        prediction = record.get("prediction", {})
-        if not isinstance(prediction, dict):
-            prediction = {}
-        timestamp = parse_timestamp(record.get("timestamp"))
-        symbol = normalize_symbol(get_field(record, prediction, "symbol", "pair", "asset", "market"))
-        timeframe_raw = get_field(record, prediction, "timeframe", "interval")
-        timeframe = TIMEFRAME_MAP.get(str(timeframe_raw).strip()) if timeframe_raw is not None else None
-        plan = str(record.get("plan") or "unknown").lower()
 
-        base = {
-            "line": line_number,
-            "timestamp": timestamp.isoformat() if timestamp else record.get("timestamp"),
-            "plan": plan,
-            "symbol": symbol,
-            "timeframe": timeframe or str(timeframe_raw or "unknown"),
-        }
-
-        if not timestamp or timestamp.timestamp() < oldest_allowed:
-            details.append({**base, "outcome": "not_evaluable", "reason": f"missing timestamp or older than {days} days"})
-            skipped += 1
-            continue
-        if not symbol or not timeframe:
-            details.append({**base, "outcome": "not_evaluable", "reason": "missing symbol or unsupported timeframe"})
-            skipped += 1
-            continue
-
-        # Avoid look-ahead: fetch market data only up to now, then exclude the
-        # candle whose timestamp is equal to/before the prediction timestamp.
-        cache_key = (symbol, timeframe, timestamp.date().isoformat())
-        try:
-            if cache_key not in cache:
-                cache[cache_key] = fetch_candles(symbol, timeframe, api_key, timestamp, now)
-                time.sleep(0.15)  # modest pacing for provider limits
-            result = evaluate_one(record, prediction, cache[cache_key])
-        except Exception as exc:
-            result = {"outcome": "error", "reason": str(exc)[:300]}
-        details.append({**base, **result})
-
-    groups = {}
+def summarize(details):
+    plans = {}
     for item in details:
-        key = item.get("plan", "unknown")
-        group = groups.setdefault(key, {"wins": 0, "losses": 0, "pending": 0, "ambiguous": 0, "not_evaluable": 0, "errors": 0, "r_values": []})
+        plan = item.get("plan", "unknown")
+        group = plans.setdefault(plan, {
+            "wins": 0, "losses": 0, "pending": 0, "ambiguous": 0,
+            "not_evaluable": 0, "no_trade": 0, "insufficient_data": 0,
+            "errors": 0, "r_values": [],
+        })
         outcome = item.get("outcome")
-        if outcome in {"win", "loss", "pending", "ambiguous", "not_evaluable", "error"}:
-            group["wins" if outcome == "win" else "losses" if outcome == "loss" else outcome] += 1
+        if outcome in VALID_OUTCOMES:
+            group[outcome] += 1
         if outcome in {"win", "loss"}:
             group["r_values"].append(float(item["r_multiple"]))
 
     summary = {}
-    for plan, group in groups.items():
+    for plan, group in plans.items():
         r_values = group.pop("r_values")
         completed = group["wins"] + group["losses"]
         summary[plan] = {
@@ -296,30 +387,129 @@ def main():
             "win_rate_percent": round(100 * group["wins"] / completed, 2) if completed else None,
             "average_r": round(mean(r_values), 3) if r_values else None,
             "expectancy_r_per_completed_trade": round(sum(r_values) / completed, 3) if completed else None,
+            "evaluable_trade_records": completed + group["pending"] + group["ambiguous"],
+        }
+    return summary
+
+
+def main():
+    try:
+        days = parse_days(sys.argv[1:])
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    load_dotenv()
+    api_key = (os.environ.get("TWELVE_DATA") or os.environ.get("TWELVE_DATA_KEY") or "").strip()
+    if not api_key:
+        print("ERROR: Twelve Data key not found in environment or .env. Key was not printed.", file=sys.stderr)
+        return 1
+
+    try:
+        rows, malformed = load_records()
+    except (OSError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    now = datetime.now(timezone.utc)
+    oldest_allowed = now.timestamp() - days * 86400
+    details = []
+    candle_cache = {}
+    request_count = 0
+
+    for line_number, record in rows:
+        prediction = record.get("prediction", {})
+        if not isinstance(prediction, dict):
+            prediction = {}
+        timestamp = parse_timestamp(record.get("timestamp"))
+        symbol = normalize_symbol(get_field(record, prediction, "symbol", "pair", "asset", "market"))
+        raw_timeframe = get_field(record, prediction, "timeframe", "interval")
+        timeframe_key = str(raw_timeframe).strip().lower() if raw_timeframe is not None else ""
+        timeframe = TIMEFRAME_MAP.get(timeframe_key) or TIMEFRAME_MAP.get(str(raw_timeframe).strip()) if raw_timeframe is not None else None
+        plan = str(record.get("plan") or "unknown").strip().lower()
+
+        base = {
+            "line": line_number,
+            "timestamp": timestamp.isoformat() if timestamp else record.get("timestamp"),
+            "plan": plan,
+            "symbol": symbol,
+            "timeframe": timeframe or str(raw_timeframe or "unknown"),
         }
 
+        if not timestamp:
+            details.append({**base, "outcome": "not_evaluable", "reason": "missing or invalid prediction timestamp"})
+            continue
+        if timestamp.timestamp() < oldest_allowed:
+            details.append({**base, "outcome": "not_evaluable", "reason": f"prediction older than requested {days}-day lookback"})
+            continue
+        if timestamp > now:
+            details.append({**base, "outcome": "not_evaluable", "reason": "prediction timestamp is in the future"})
+            continue
+        if not symbol or not timeframe:
+            details.append({**base, "outcome": "not_evaluable", "reason": "missing symbol or unsupported timeframe"})
+            continue
+
+        cache_key = (symbol, timeframe)
+        try:
+            if cache_key not in candle_cache:
+                candle_cache[cache_key] = fetch_candles(symbol, timeframe, api_key)
+                request_count += 1
+                if request_count:
+                    time.sleep(REQUEST_PAUSE_SECONDS)
+            result = evaluate_one(record, prediction, candle_cache[cache_key], timestamp)
+        except Exception as exc:
+            # Do not print API keys or request URLs in errors.
+            message = str(exc).replace(api_key, "[REDACTED]")[:300]
+            result = {"outcome": "error", "reason": message}
+        details.append({**base, **result})
+
+    summary = summarize(details)
     report = {
         "generated_at": now.isoformat(),
         "lookback_days": days,
         "source_log": str(LOG_FILE),
-        "note": "Historical estimate only, not proof of future profitability. Candle-only data cannot determine order when SL and TP are both touched within one candle.",
+        "records_read": len(rows),
+        "malformed_lines": malformed,
+        "provider": "Twelve Data",
+        "candle_timezone_requested": "UTC",
+        "candle_limit_per_symbol_timeframe": OUTPUTSIZE,
         "summary_by_plan": summary,
         "predictions": details,
+        "methodology": [
+            "Only Buy/Sell predictions with numeric, directionally valid entry/SL/TP are trade-evaluable.",
+            "Hold/Wait/no-trade decisions are reported as no_trade and excluded from trade win-rate denominators.",
+            "Only candles with start timestamps strictly later than the prediction timestamp are evaluated.",
+            "If SL and TP touch in the same candle, outcome is ambiguous and excluded from wins/losses.",
+            "Pending means candles were available after the prediction but neither level was touched.",
+            "insufficient_data means provider history does not cover the prediction timestamp.",
+            "This OHLC-based evaluation cannot model spreads, commissions, slippage, entry fill, or intra-candle price path.",
+        ],
+        "note": "Historical candle-based estimate only; not proof of future profitability. Verify provider timezone and coverage before relying on the report.",
     }
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    REPORT_FILE.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"Evaluated {len(details)} logged records.")
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        REPORT_FILE.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError as exc:
+        print(f"ERROR: Could not write report: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Evaluated {len(details)} logged records ({malformed} malformed lines skipped).")
     print(f"Report saved to: {REPORT_FILE}")
     print()
     if not summary:
         print("No prediction records were available.")
     for plan, values in summary.items():
-        print(f"[{plan.upper()}] wins={values['wins']} losses={values['losses']} "
-              f"win_rate={values['win_rate_percent']}% avg_R={values['average_r']} "
-              f"expectancy_R={values['expectancy_r_per_completed_trade']} "
-              f"pending={values['pending']} ambiguous={values['ambiguous']} "
-              f"not_evaluable={values['not_evaluable']} errors={values['errors']}")
-    print("\nReminder: entries with missing numeric levels (including WAIT predictions) are not counted as wins/losses.")
+        print(
+            f"[{plan.upper()}] wins={values['wins']} losses={values['losses']} "
+            f"win_rate={values['win_rate_percent']}% avg_R={values['average_r']} "
+            f"expectancy_R={values['expectancy_r_per_completed_trade']} "
+            f"pending={values['pending']} ambiguous={values['ambiguous']} "
+            f"no_trade={values['no_trade']} insufficient_data={values['insufficient_data']} "
+            f"not_evaluable={values['not_evaluable']} errors={values['errors']}"
+        )
+    print("\nReminder: no-trade, pending, ambiguous, missing-level, and insufficient-data records are not wins/losses.")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
