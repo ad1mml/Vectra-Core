@@ -3753,6 +3753,19 @@ def ping():
         f.write("PING RECEIVED\n")
 
     return "pong"
+# ---------------------------------------------------------------------------
+# Live decision dashboard (admin only): /admin/dashboard
+# Needs dashboard.py, dashboard.html and evaluate_predictions.py beside this
+# file. Isolated like benchmark logging: if it fails to load, the rest of the
+# app keeps working normally.
+# ---------------------------------------------------------------------------
+try:
+    from dashboard import register_dashboard
+    register_dashboard(app, _require_admin, os.path.dirname(os.path.abspath(__file__)))
+except Exception:
+    app.logger.exception("dashboard failed to load")
+
+
 if __name__ == "__main__":
     debug_mode = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     port = int(os.environ.get("PORT", 5000))
