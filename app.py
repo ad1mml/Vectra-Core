@@ -3060,6 +3060,11 @@ news specifically.
                             "rather than silently picking one.",
                         )
                     _facts_text, chart_facts = _get_market_facts(caption_symbol)
+                    app.logger.info(
+                        "FACTS for %s: %s",
+                        caption_symbol,
+                        "ok" if chart_facts else "EMPTY",
+                    )
                     chart_market_data_block += _facts_text
 
             SYSTEM_PROMPT = f"""
@@ -3187,6 +3192,14 @@ USER REQUEST
             _save_json(CHART_MEMORY_FILE, memory)
 
             result["session_id"] = active_session["id"]
+
+            # Benchmark logging is deliberately isolated: if benchmark.py is
+            # missing or logging fails, chart analysis still returns normally.
+            try:
+                from benchmark import log_prediction
+                log_prediction(user_email, plan, result)
+            except Exception:
+                app.logger.exception("benchmark log failed")
 
             # Chart-upload counter for the frontend to show (e.g. "7/20
             # charts used — resets in 12 days"). VIP has no limit, so it
