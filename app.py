@@ -52,6 +52,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from prompts.followup_prompt import FOLLOWUP_PROMPT as FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
+from market_facts import facts_block as _facts_block
 from prompts.default_prompt import DEFAULT_PROMPT
 from prompts.pro_prompt import PRO_PROMPT
 import requests
@@ -1422,6 +1423,41 @@ live price/chart access when this section is present.
 """
 
 
+FACTS_TIMEFRAMES = ("1h", "4h", "1day")
+
+
+def _build_market_facts_block(symbol: str) -> str:
+    """Fetch 1H/4H/Daily candles in parallel and turn them into a verified
+    facts block (swings, ATR, trend, premium/discount). Never raises:
+    returns "" if anything fails, so the analysis still runs without it."""
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=len(FACTS_TIMEFRAMES)) as pool:
+            futures = {
+                tf: pool.submit(_fetch_ohlcv, symbol, tf, 120)
+                for tf in FACTS_TIMEFRAMES
+            }
+            per_tf = {}
+            for tf, fut in futures.items():
+                candles = fut.result(timeout=12)
+                if candles:
+                    per_tf[tf] = candles
+        if not per_tf:
+            return ""
+        block = _facts_block(per_tf, symbol)
+        if not block:
+            return ""
+        return (
+            "\n==========================================================\n"
+            + block
+            + "\n==========================================================\n"
+        )
+    except Exception as e:
+        app.logger.error("market facts failed for %s: %s", symbol, e)
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
@@ -2506,6 +2542,27 @@ def test_gemini():
             "error": "Diagnostic request failed."
         }), 500
 
+@app.route("/test-twelvedata", methods=["GET"])
+def test_twelvedata():
+    if os.environ.get("EXPOSE_DIAGNOSTICS", "false").lower() != "true" and not _admin_authorized():
+        return jsonify({"error": "Not available."}), 404
+    if not TWELVE_DATA_KEY:
+        return jsonify({"success": False, "error": "TWELVE_DATA key is missing from .env"}), 500
+    symbol = request.args.get("symbol", "EUR/USD")
+    interval = request.args.get("interval", "1h")
+    candles = _fetch_ohlcv(symbol, interval=interval, outputsize=50)
+    if not candles:
+        return jsonify({"success": False, "error": "No candles returned. Check the error log."}), 502
+    return jsonify({
+        "success": True,
+        "symbol": symbol,
+        "interval": interval,
+        "candle_count": len(candles),
+        "last_candle": candles[-1],
+        "facts_preview": _build_market_facts_block(symbol),
+    })
+
+
 @app.route("/news", methods=["GET"])
 def raw_news():
     """Plain JSON of the latest headlines VectraCore currently sees — useful
@@ -2909,6 +2966,9 @@ news specifically.
                             "Protocol) and mention the discrepancy plainly "
                             "rather than silently picking one.",
                         )
+                    chart_market_data_block += _build_market_facts_block(
+                        caption_symbol
+                    )
 
             SYSTEM_PROMPT = f"""
 {ACTIVE_PROMPT}
