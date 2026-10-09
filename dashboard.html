@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>VectraCore - Decision Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<style>
+:root{
+  --bg-color:#050A1A;--panel-bg:#0E1530;--border-color:#232C4A;
+  --accent-color:#8B5CF6;--accent-hover:#7C3AED;
+  --text-main:#F5F7FF;--text-muted:#8891B3;
+  --win:#4ade80;--loss:#f87171;--amber:#fbbf24;--blue:#a5b4fc;
+  --panel2:#141c3b;
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Inter',sans-serif}
+body{background:var(--bg-color);color:var(--text-main);display:flex;flex-direction:column;min-height:100vh;justify-content:space-between}
+
+/* header (same as index.html) */
+header{display:flex;justify-content:space-between;align-items:center;padding:20px 80px;border-bottom:1px solid rgba(35,44,74,.4)}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit}
+.logo-mark{width:28px;height:28px;flex-shrink:0}
+.logo h1{font-size:1.5rem;font-weight:700;letter-spacing:2px}
+.logo h1 span{color:var(--accent-color)}
+.nav-actions{display:flex;gap:20px;align-items:center}
+.nav-actions a{color:var(--text-muted);text-decoration:none;font-size:.9rem;transition:color .2s}
+.nav-actions a:hover{color:var(--text-main)}
+
+/* page */
+.wrap{width:100%;max-width:1240px;margin:0 auto;padding:56px 24px 40px}
+.title-block{text-align:center;margin-bottom:34px}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(139,92,246,.15);color:#C4B5FD;font-size:.8rem;font-weight:700;letter-spacing:.3px;padding:6px 16px;border-radius:50px;border:1px solid var(--accent-color);margin-bottom:22px}
+.badge svg{width:13px;height:13px;flex-shrink:0}
+.title-block h2{font-size:3rem;font-weight:700;line-height:1.2;letter-spacing:-1px;margin-bottom:14px}
+.title-block h2 span{background:linear-gradient(120deg,#8B5CF6,#4F46E5);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:var(--text-muted);font-size:1rem;line-height:1.6;max-width:720px;margin:0 auto}
+
+/* buttons (cta + secondary, like index.html) */
+button{font-weight:700;font-size:.9rem;border-radius:10px;cursor:pointer;outline:none;transition:filter .2s,transform .1s,background-color .2s;
+  background:transparent;color:var(--text-main);border:2px solid var(--accent-color);padding:9px 20px}
+button:hover{background:rgba(139,92,246,.1);transform:translateY(-1px)}
+button.primary{background:linear-gradient(120deg,#A78BFA,#7C3AED);color:#12081f;border:none;padding:11px 22px;box-shadow:0 4px 24px rgba(139,92,246,.35)}
+button.primary:hover{filter:brightness(1.08);background:linear-gradient(120deg,#A78BFA,#7C3AED)}
+button:disabled{opacity:.6;cursor:not-allowed;transform:none}
+select,input[type=text],input:not([type]){background:var(--panel-bg);color:var(--text-main);border:1px solid var(--border-color);border-radius:6px;padding:10px 12px;font-size:.85rem;outline:none}
+select:focus,input:focus{border-color:var(--accent-color)}
+
+.bar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;margin-bottom:26px}
+#actions{padding:14px 18px;background:var(--panel-bg);border:1px solid var(--border-color);border-radius:12px;justify-content:center}
+#live:not(:empty){margin-right:auto}
+.panel .bar{justify-content:flex-start;margin-bottom:14px}
+#livectl{display:none;gap:12px;align-items:center}
+.mut{color:var(--text-muted)}
+.win{color:var(--win)}.loss{color:var(--loss)}
+
+/* section headings (eyebrow style from index.html) */
+h3{color:var(--accent-color);font-size:.78rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px}
+
+/* cards / panels */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:22px}
+.card{background:var(--panel-bg);border:1px solid var(--border-color);border-radius:12px;padding:20px 20px}
+.card .l{font-size:.72rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-muted)}
+.card .v{font-size:1.9rem;font-weight:700;letter-spacing:-.5px;margin-top:8px}
+.card .s{font-size:.8rem;color:var(--text-muted);margin-top:4px;line-height:1.5}
+.panel{background:var(--panel-bg);border:1px solid var(--border-color);border-radius:12px;padding:22px 20px;margin-bottom:22px;overflow-x:auto}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(700px,1fr));gap:22px}
+.grid2 .panel{margin-bottom:0}.grid2{margin-bottom:22px}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{padding:11px 12px;border-bottom:1px solid rgba(35,44,74,.7);text-align:left;white-space:nowrap}
+th{font-size:.68rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);background:var(--panel2);position:sticky;top:0}
+tr:last-child td{border-bottom:none}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.clk{cursor:pointer}tr.clk:hover td,tbody tr:hover td{background:rgba(139,92,246,.05)}
+.scroll{max-height:560px;overflow:auto;border-radius:8px}
+
+/* pills */
+.pill{display:inline-block;padding:3px 10px;border-radius:50px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.p-win{background:rgba(74,222,128,.14);color:var(--win)}
+.p-loss{background:rgba(248,113,113,.14);color:var(--loss)}
+.p-pending{background:rgba(251,191,36,.14);color:var(--amber)}
+.p-no_trade{background:rgba(136,145,179,.16);color:var(--text-muted)}
+.p-awaiting,.p-ambiguous,.p-not_evaluable,.p-insufficient_data,.p-error{background:rgba(139,92,246,.15);color:#C4B5FD}
+
+/* win-rate bar */
+.wr{display:flex;align-items:center;gap:10px;min-width:160px}
+.wr .track{flex:1;height:8px;background:var(--panel2);border-radius:4px;position:relative;overflow:hidden}
+.wr .fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.wr .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--text-muted);opacity:.6}
+.wr b{min-width:50px;text-align:right}
+
+.warn{background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.4);color:#C4B5FD;padding:12px 16px;border-radius:10px;font-size:.85rem;line-height:1.55;margin-bottom:22px}
+.empty{color:var(--text-muted);padding:40px;text-align:center}
+
+/* file loader */
+.drop{border:2px dashed var(--border-color);border-radius:12px;padding:36px;text-align:center;background:var(--panel-bg);margin-bottom:26px;transition:border-color .2s}
+.drop.over{border-color:var(--accent-color)}
+.drop b{font-size:1.05rem}
+.drop p{color:var(--text-muted);font-size:.9rem;line-height:1.6;margin:8px 0 18px}
+.files{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+code{background:var(--panel2);padding:2px 7px;border-radius:5px;font-size:.8rem;color:#C4B5FD}
+
+/* how-to section (workflow style from index.html) */
+.how{border-top:1px solid rgba(35,44,74,.4);padding:56px 24px 70px}
+.how-inner{max-width:1080px;margin:0 auto;text-align:center}
+.section-eyebrow{color:var(--accent-color);font-size:.78rem;font-weight:700;letter-spacing:1.5px;margin-bottom:14px}
+.section-title{font-size:1.9rem;font-weight:700;letter-spacing:-.5px;margin-bottom:14px}
+.section-sub{color:var(--text-muted);font-size:1rem;max-width:640px;margin:0 auto 40px;line-height:1.6}
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;text-align:left}
+.step{background:var(--panel-bg);border:1px solid var(--border-color);border-radius:12px;padding:22px 18px}
+.step-num{width:28px;height:28px;border-radius:50%;background:rgba(139,92,246,.15);color:var(--accent-color);border:1px solid var(--accent-color);font-size:.85rem;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.step h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+.step p{color:var(--text-muted);font-size:.85rem;line-height:1.55}
+
+/* footer */
+footer{border-top:1px solid rgba(35,44,74,.4);padding:28px 80px;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:center}
+footer .logo h1{font-size:1.1rem}
+footer .logo-mark{width:22px;height:22px}
+footer p{color:var(--text-muted);font-size:.78rem;line-height:1.5;max-width:640px}
+
+@media(max-width:900px){.steps{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){
+  header{padding:16px 20px}.logo h1{font-size:1.2rem}.logo-mark{width:22px;height:22px}.nav-actions{gap:12px}
+  .wrap{padding:36px 16px 28px}.title-block h2{font-size:2.1rem}
+  .grid2{grid-template-columns:1fr}.steps{grid-template-columns:1fr}.section-title{font-size:1.5rem}
+  footer{padding:24px 20px}#actions{justify-content:center}
+}
+</style></head><body>
+
+<header>
+  <a class="logo" href="/"><svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Vectra<span>Core</span></h1></a>
+  <div class="nav-actions">
+    <a href="/admin/users">Users</a>
+    <a href="/admin/feedback">Feedback</a>
+    <a href="/">Main site</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="title-block">
+    <div class="badge"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>ADMIN &middot; DECISION TRACKER</div>
+    <h2>Every decision, <span>verified</span></h2>
+    <p class="sub" id="meta">Connecting to live data...</p>
+  </div>
+
+  <div class="drop" id="drop" style="display:none">
+    <b>Not connected to the app</b>
+    <p>For live data, open this page from <code>/admin/dashboard</code>. To look at a saved snapshot instead, load
+      <code>data/benchmark_report.json</code> (required) and <code>data/predictions.jsonl</code> (optional).<br>
+      Files are read in your browser only. Nothing is uploaded anywhere.</p>
+    <div class="files">
+      <input type="file" id="file" accept=".json,.jsonl,.txt" multiple style="display:none">
+      <button class="primary" id="pick">Choose files</button>
+      <button id="demo">Try demo data</button>
+    </div>
+    <div id="loaded" class="mut" style="margin-top:12px;font-size:.8rem"></div>
+  </div>
+
+  <div class="bar" id="actions" style="display:none">
+    <span id="live" style="font-size:.85rem"></span>
+    <span id="livectl">
+      <label class="mut" style="font-size:.8rem">Lookback <select id="days"><option>7</option><option selected>30</option><option>90</option><option>180</option><option>365</option></select></label>
+      <button class="primary" id="refresh">Check against market now</button>
+    </span>
+    <button id="csv">Download CSV</button>
+    <button id="newfiles">Load different files</button>
+  </div>
+
+  <div id="root"></div>
+</main>
+
+<section class="how">
+  <div class="how-inner">
+    <div class="section-eyebrow">HOW TO READ IT</div>
+    <h3 class="section-title" style="text-transform:none;letter-spacing:-.5px;color:var(--text-main);font-size:1.9rem">From logged prediction to verified result</h3>
+    <p class="section-sub">Every prediction is checked against real candles. The dashboard only counts a trade once its stop loss or take profit was actually hit.</p>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><h4>Prediction logged</h4><p>The app saves each decision the moment it is made. It shows here as <b>awaiting</b>.</p></div>
+      <div class="step"><div class="step-num">2</div><h4>Checked automatically</h4><p>New and open trades are compared with real Twelve Data candles on a schedule.</p></div>
+      <div class="step"><div class="step-num">3</div><h4>Win, loss or pending</h4><p>Take profit hit first is a win, stop loss first is a loss, neither yet is pending.</p></div>
+      <div class="step"><div class="step-num">4</div><h4>Grouped by symbol</h4><p>Win rate, average R and total R are broken down by symbol, side, timeframe and plan.</p></div>
+      <div class="step"><div class="step-num">5</div><h4>Trust the sample size</h4><p>Hover a win-rate bar for its 95% range. Aim for 30+ completed trades per row.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <a class="logo" href="/"><svg class="logo-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13,52 L30,69 L58,34" fill="none" stroke="#7C3AED" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/><path d="M28,42 L45,60 L80,17" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><path d="M80,17 L69,20.5 M80,17 L76,28" fill="none" stroke="#8B5CF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>Vectra<span>Core</span></h1></a>
+  <p>Historical, candle-based estimate only. It cannot model spreads, commissions, slippage or the price path inside a candle, and it is not a guarantee of future results.</p>
+</footer>
+
+<script>
+
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtPrice=v=>v==null?'-':(+v).toPrecision(6).replace(/\.?0+$/,'');
+const fmtTime=t=>t?esc(t.slice(0,16).replace('T',' ')):'-';
+let DATA=null, filt={symbol:'',outcome:'',direction:'',q:''};
+
+function wrCell(r){
+  if(r.win_rate==null) return '<span class="mut">no completed trades</span>';
+  const col=r.win_rate>=50?'var(--win)':'var(--loss)';
+  const lo=r.win_rate_low, hi=r.win_rate_high;
+  return `<div class="wr" title="95% range with ${r.completed} trades: ${lo}% - ${hi}%">
+    <div class="track"><div class="fill" style="width:${r.win_rate}%;background:${col}"></div><div class="mid"></div></div>
+    <b style="color:${col}">${r.win_rate}%</b></div>`;
+}
+function rCell(v){ if(v==null) return '<span class="mut">-</span>'; return `<span class="${v>=0?'win':'loss'}">${v>0?'+':''}${v}</span>`; }
+
+function groupTable(title, rows, nameLabel, clickKey){
+  if(!rows.length) return '';
+  let h=`<div class="panel"><h3>${title}</h3><table><tr><th>${nameLabel}</th><th class="n">Decisions</th><th class="n">Trades</th><th class="n">W</th><th class="n">L</th><th>Win rate</th><th class="n">Avg R</th><th class="n">Total R</th><th class="n">Pending</th><th class="n">Wait</th><th class="n">Blocked</th><th class="n">Unscored</th></tr>`;
+  for(const r of rows){
+    const unscored=r.not_evaluable+r.insufficient_data+r.errors+r.ambiguous;
+    h+=`<tr${clickKey?` class="clk" data-k="${clickKey}" data-v="${esc(r.name)}"`:''}><td><b>${esc(r.name)}</b></td><td class="n">${r.decisions}</td><td class="n">${r.completed}</td><td class="n win">${r.wins}</td><td class="n loss">${r.losses}</td><td>${wrCell(r)}</td><td class="n">${rCell(r.avg_r)}</td><td class="n">${rCell(r.total_r)}</td><td class="n">${r.pending}</td><td class="n">${r.no_trade}</td><td class="n">${r.gate_blocked}</td><td class="n mut">${unscored}</td></tr>`;
+  }
+  return h+'</table></div>';
+}
+
+function equitySvg(eq){
+  if(eq.length<2) return '<div class="empty" style="padding:20px">Need at least 2 completed trades for a curve.</div>';
+  const W=900,H=220,P=34, ys=eq.map(p=>p.r).concat([0]);
+  const mn=Math.min(...ys), mx=Math.max(...ys), span=(mx-mn)||1;
+  const x=i=>P+i*(W-2*P)/(eq.length-1), y=v=>H-P-(v-mn)*(H-2*P)/span;
+  const pts=eq.map((p,i)=>`${x(i).toFixed(1)},${y(p.r).toFixed(1)}`).join(' ');
+  const last=eq[eq.length-1].r;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    <line x1="${P}" x2="${W-P}" y1="${y(0)}" y2="${y(0)}" stroke="#8891B3" stroke-dasharray="4 4" opacity=".6"/>
+    <polyline fill="none" stroke="${last>=0?'#4ade80':'#f87171'}" stroke-width="2" points="${pts}"/>
+    <text x="${P}" y="14" fill="#8891B3" font-size="11">max ${mx}R</text>
+    <text x="${P}" y="${H-8}" fill="#8891B3" font-size="11">min ${mn}R</text>
+    <text x="${W-P}" y="14" fill="${last>=0?'#4ade80':'#f87171'}" font-size="12" text-anchor="end">now ${last>0?'+':''}${last}R after ${eq.length} trades</text></svg>`;
+}
+
+function decisionRows(){
+  const q=filt.q.toLowerCase();
+  return DATA.decisions.filter(d=>
+    (!filt.symbol||d.symbol===filt.symbol)&&(!filt.outcome||d.outcome===filt.outcome)&&
+    (!filt.direction||d.direction===filt.direction)&&
+    (!q||(d.symbol+' '+d.timeframe+' '+d.reason+' '+d.plan).toLowerCase().includes(q)));
+}
+function decisionTable(){
+  const rows=decisionRows();
+  let h=`<div class="mut" style="font-size:.8rem;margin-bottom:8px">${rows.length} of ${DATA.decisions.length} decisions shown</div><div class="scroll"><table><tr><th>Time (UTC)</th><th>Symbol</th><th>TF</th><th>Plan</th><th>Decision</th><th class="n">Entry</th><th class="n">SL</th><th class="n">TP</th><th>Outcome</th><th class="n">R</th><th>Closed</th><th>Note</th></tr>`;
+  for(const d of rows.slice(0,500)){
+    const dcls=d.direction==='buy'?'win':d.direction==='sell'?'loss':'mut';
+    h+=`<tr><td class="mut">${fmtTime(d.timestamp)}</td><td><b>${esc(d.symbol)}</b></td><td>${esc(d.timeframe)}</td><td class="mut">${esc(d.plan)}</td><td class="${dcls}">${esc(d.direction)}</td><td class="n">${fmtPrice(d.entry)}</td><td class="n">${fmtPrice(d.stop_loss)}</td><td class="n">${fmtPrice(d.take_profit)}</td><td><span class="pill p-${esc(d.outcome)}">${esc((d.outcome||'?').replace('_',' '))}</span></td><td class="n">${rCell(d.r_multiple)}</td><td class="mut">${fmtTime(d.closed_at)}</td><td class="mut" style="white-space:normal;max-width:340px">${esc(d.reason)}</td></tr>`;
+  }
+  return h+'</table></div>'+(rows.length>500?'<div class="mut" style="margin-top:8px;font-size:.8rem">Showing the newest 500. Download the CSV for everything.</div>':'');
+}
+
+function render(){
+  const o=DATA.overall;
+  const root=$('#root');
+  const symbols=[...new Set(DATA.decisions.map(d=>d.symbol))].sort();
+  const outs=[...new Set(DATA.decisions.map(d=>d.outcome))].sort();
+  const dirs=[...new Set(DATA.decisions.map(d=>d.direction))].sort();
+  const opt=(a,sel)=>'<option value="">All</option>'+a.map(v=>`<option${v===sel?' selected':''}>${esc(v)}</option>`).join('');
+  const small=o.completed<30?`<div class="warn">Only ${o.completed} completed trade(s). A win rate on so few trades is mostly luck; the 95% range for the overall rate is ${o.win_rate_low??'?'}% to ${o.win_rate_high??'?'}%. Hover any win-rate bar to see its range. Aim for 30+ completed trades per row before trusting it.</div>`:'';
+  root.innerHTML=`${small}
+  <div class="cards">
+    <div class="card"><div class="l">Win rate</div><div class="v ${o.win_rate>=50?'win':'loss'}">${o.win_rate==null?'-':o.win_rate+'%'}</div><div class="s">${o.wins}W / ${o.losses}L</div></div>
+    <div class="card"><div class="l">Total R</div><div class="v">${rCell(o.total_r)}</div><div class="s">avg ${o.avg_r==null?'-':o.avg_r}R per trade</div></div>
+    <div class="card"><div class="l">Decisions</div><div class="v">${o.decisions}</div><div class="s">${o.completed} completed</div></div>
+    <div class="card"><div class="l">Pending</div><div class="v">${o.pending}</div><div class="s">${o.awaiting} awaiting first check</div></div>
+    <div class="card"><div class="l">Wait / no trade</div><div class="v">${o.no_trade}</div><div class="s">${o.gate_blocked} blocked by safety gate</div></div>
+    <div class="card"><div class="l">Unscored</div><div class="v">${o.not_evaluable+o.insufficient_data+o.errors+o.ambiguous}</div><div class="s">${o.ambiguous} ambiguous, ${o.not_evaluable} missing levels</div></div>
+  </div>
+  <div class="panel"><h3>Cumulative R (completed trades, oldest to newest)</h3>${equitySvg(DATA.equity)}</div>
+  <div class="grid2">${groupTable('By symbol',DATA.by_symbol,'Symbol','symbol')}${groupTable('By symbol and direction',DATA.by_symbol_direction,'Symbol / side','')}</div>
+  <div class="grid2">${groupTable('By timeframe',DATA.by_timeframe,'Timeframe','')}${groupTable('By direction',DATA.by_direction,'Direction','direction')}</div>
+  ${groupTable('By plan',DATA.by_plan,'Plan','')}
+  <div class="panel"><h3>Every decision</h3>
+    <div class="bar"><select id="f-symbol">${opt(symbols,filt.symbol)}</select><select id="f-outcome">${opt(outs,filt.outcome)}</select><select id="f-direction">${opt(dirs,filt.direction)}</select><input id="f-q" placeholder="Search..." value="${esc(filt.q)}"></div>
+    <div id="dtable">${decisionTable()}</div></div>
+  <div class="mut" style="font-size:.75rem">Win rate = wins / (wins + losses). Wait, pending, ambiguous (SL and TP in the same candle) and unscored records are not counted as wins or losses. ${esc(DATA.note||'')}</div>`;
+  for(const k of ['symbol','outcome','direction']) $('#f-'+k).onchange=e=>{filt[k]=e.target.value;$('#dtable').innerHTML=decisionTable();};
+  $('#f-q').oninput=e=>{filt.q=e.target.value;$('#dtable').innerHTML=decisionTable();};
+  root.querySelectorAll('tr.clk').forEach(tr=>tr.onclick=()=>{filt[tr.dataset.k]=tr.dataset.v;render();$('#dtable').scrollIntoView({behavior:'smooth'});});
+}
+
+
+/* ---------- data layer (port of dashboard.py build_data) ---------- */
+const MISSING=new Set(['','n/a','na','none','null','unknown','-','not available for this chart','not visible on this chart','not available','not provided']);
+function parseNumber(v){
+  if(v==null||typeof v==='boolean') return null;
+  if(typeof v==='number') return isFinite(v)?v:null;
+  let t=String(v).trim(); if(MISSING.has(t.toLowerCase())) return null;
+  t=t.replace(/^[\s$€£]+/,'').replace(/,/g,'');
+  if(!/^[-+]?(\d+(\.\d*)?|\.\d+)$/.test(t)) return null;
+  const n=parseFloat(t); return isFinite(n)?n:null;
+}
+function getField(rec,pred,...names){
+  for(const src of [pred,rec]){ if(!src||typeof src!=='object') continue;
+    for(const n of names){ const v=src[n]; if(v!=null&&String(v).trim()) return v; } }
+  return null;
+}
+function normDecision(rec,pred){
+  for(const f of ['direction','signal','action','decision','final_decision']){
+    const v=getField(rec,pred,f); if(v==null) continue;
+    const t=String(v).trim().toLowerCase();
+    if(/^(buy|long)\b/.test(t)) return 'buy';
+    if(/^(sell|short)\b/.test(t)) return 'sell';
+    if(/^(hold|wait|no[- ]trade|skip)\b/.test(t)) return 'wait';
+  }
+  return 'unknown';
+}
+function wilson(w,n){ if(n<=0) return [null,null]; const z=1.96,p=w/n,d=1+z*z/n,c=(p+z*z/(2*n))/d,h=z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n))/d;
+  return [+(100*(c-h)).toFixed(1),+(100*(c+h)).toFixed(1)]; }
+function stats(items){
+  const o={decisions:items.length,wins:0,losses:0,pending:0,awaiting:0,ambiguous:0,no_trade:0,gate_blocked:0,not_evaluable:0,insufficient_data:0,errors:0};
+  const rs=[];
+  for(const it of items){
+    const k=it.outcome;
+    if(k==='win')o.wins++; else if(k==='loss')o.losses++; else if(k==='error')o.errors++; else if(k in o)o[k]++;
+    if(it.gate_blocked)o.gate_blocked++;
+    if((k==='win'||k==='loss')&&typeof it.r_multiple==='number') rs.push(it.r_multiple);
+  }
+  const done=o.wins+o.losses, [lo,hi]=wilson(o.wins,done), sum=rs.reduce((a,b)=>a+b,0);
+  return Object.assign(o,{completed:done,win_rate:done?+(100*o.wins/done).toFixed(1):null,win_rate_low:lo,win_rate_high:hi,
+    total_r:rs.length?+sum.toFixed(2):0,avg_r:rs.length?+(sum/rs.length).toFixed(2):null});
+}
+function group(items,key){
+  const m=new Map();
+  for(const it of items){ const k=it[key]||'Unknown'; if(!m.has(k)) m.set(k,[]); m.get(k).push(it); }
+  return [...m].map(([name,v])=>Object.assign({name},stats(v)))
+    .sort((a,b)=>b.completed-a.completed||b.decisions-a.decisions||a.name.localeCompare(b.name));
+}
+function parseJsonl(text){
+  const log=new Map(); let n=0;
+  text.split(/\r?\n/).forEach((line,i)=>{ n=i+1; if(!line.trim()) return;
+    try{ const r=JSON.parse(line); if(r&&typeof r==='object'&&!Array.isArray(r)) log.set(i+1,r); }catch(e){} });
+  return log;
+}
+function buildData(report,log){
+  const decisions=[];
+  for(const item of (report.predictions||[])){
+    let rec=log.get(item.line);
+    if(rec){ const a=Date.parse(rec.timestamp), b=Date.parse(item.timestamp); if(!(a===b)) rec=null; }
+    rec=rec||null; const have=!!rec; rec=rec||{};
+    const pred=(rec.prediction&&typeof rec.prediction==='object')?rec.prediction:{};
+    let dir=have?normDecision(rec,pred):(item.outcome==='no_trade'?'wait':'unknown');
+    let entry=have?parseNumber(getField(rec,pred,'entry','entry_price')):null;
+    let sl=have?parseNumber(getField(rec,pred,'stop_loss','sl')):null;
+    let tp=have?parseNumber(getField(rec,pred,'take_profit','take_profit_1','target','tp')):null;
+    if(item.gate_blocked){ const p=item.proposed||{};
+      dir='wait (gate blocked)'; if(entry==null)entry=parseNumber(p.entry); if(sl==null)sl=parseNumber(p.stop_loss);
+      if(tp==null)tp=parseNumber(p.take_profit||p.take_profit_1); }
+    decisions.push({line:item.line,timestamp:item.timestamp,plan:item.plan,symbol:item.symbol||'Unknown',
+      timeframe:item.timeframe||'unknown',direction:dir,entry,stop_loss:sl,take_profit:tp,outcome:item.outcome,
+      r_multiple:item.r_multiple,gate_blocked:!!item.gate_blocked,closed_at:item.candle_time,reason:item.reason||''});
+  }
+  decisions.sort((a,b)=>(b.timestamp||'').localeCompare(a.timestamp||''));
+  let run=0; const equity=[];
+  decisions.filter(d=>d.outcome==='win'||d.outcome==='loss').sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||''))
+    .forEach(d=>{ run+=+d.r_multiple||0; equity.push({t:d.timestamp,r:+run.toFixed(2)}); });
+  const pairs=new Map();
+  for(const d of decisions) if(d.direction==='buy'||d.direction==='sell'){ const k=d.symbol+' / '+d.direction; if(!pairs.has(k))pairs.set(k,[]); pairs.get(k).push(d); }
+  const bsd=[...pairs].map(([name,v])=>Object.assign({name},stats(v))).sort((a,b)=>b.completed-a.completed||a.name.localeCompare(b.name));
+  return {ready:true,generated_at:report.generated_at,lookback_days:report.lookback_days,records_read:report.records_read,
+    malformed_lines:report.malformed_lines,overall:stats(decisions),by_symbol:group(decisions,'symbol'),by_timeframe:group(decisions,'timeframe'),
+    by_direction:group(decisions,'direction'),by_plan:group(decisions,'plan'),by_symbol_direction:bsd,equity,decisions,note:report.note,joined:log.size>0};
+}
+
+/* ---------- loading ---------- */
+let REPORT=null, LOG=new Map();
+function show(){
+  DATA=buildData(REPORT,LOG);
+  $('#meta').textContent=`Evaluated ${DATA.generated_at?DATA.generated_at.slice(0,16).replace('T',' ')+' UTC':'?'} | lookback ${DATA.lookback_days} days | ${DATA.records_read} log records | ${DATA.malformed_lines} malformed lines`+(DATA.joined?'':' | no predictions.jsonl loaded, so side/entry/SL/TP are blank')+' | offline snapshot';
+  $('#drop').style.display='none'; $('#actions').style.display='flex'; render();
+}
+async function readFiles(files){
+  for(const f of files){
+    const text=await f.text();
+    try{
+      if(/\.jsonl$/i.test(f.name)){ LOG=parseJsonl(text); }
+      else{ const j=JSON.parse(text); if(j&&Array.isArray(j.predictions)) REPORT=j; else throw new Error('no "predictions" list'); }
+    }catch(e){ $('#loaded').textContent=`Could not read ${f.name}: ${e.message}`; return; }
+  }
+  $('#loaded').textContent=(REPORT?'Report loaded. ':'Report still needed. ')+(LOG.size?`${LOG.size} log lines loaded.`:'');
+  if(REPORT) show();
+}
+function demo(){
+  const now=Date.now(),syms=[['EUR/USD','1.1'],['XAU/USD','2650'],['BTC/USD','65000'],['GBP/USD','1.3']],tfs=['15min','1h','4h'];
+  let s=7; const rnd=()=>(s=(s*16807)%2147483647)/2147483647; const preds=[];
+  for(let i=1;i<=80;i++){
+    const ts=new Date(now-(80-i)*3600e3).toISOString(), [sym,px]=syms[Math.floor(rnd()*4)], r=rnd();
+    const b={line:i,timestamp:ts,plan:rnd()<.5?'vip':'pro',symbol:sym,timeframe:tfs[Math.floor(rnd()*3)]};
+    if(r<.2) Object.assign(b,{outcome:'no_trade',reason:'explicit Hold/Wait/no-trade decision'});
+    else{ const o=rnd(); if(o<.4) Object.assign(b,{outcome:'win',r_multiple:1.5,candle_time:ts});
+      else if(o<.75) Object.assign(b,{outcome:'loss',r_multiple:-1,candle_time:ts});
+      else if(o<.92) Object.assign(b,{outcome:'pending',reason:'neither SL nor TP touched'});
+      else Object.assign(b,{outcome:'not_evaluable',reason:'missing entry/SL/TP'}); }
+    preds.push(b);
+  }
+  REPORT={generated_at:new Date().toISOString(),lookback_days:30,records_read:80,malformed_lines:0,predictions:preds,note:'DEMO DATA, not real trades.'};
+  LOG=new Map(); show(); $('#meta').textContent='DEMO DATA (random, not your trades)';
+}
+function toCsv(){
+  const cols=['timestamp','plan','symbol','timeframe','direction','entry','stop_loss','take_profit','outcome','r_multiple','closed_at','reason'];
+  const q=v=>{ v=v==null?'':String(v); if(/^[=+\-@]/.test(v)) v="'"+v; return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  const rows=[cols.join(',')].concat(DATA.decisions.map(d=>cols.map(c=>q(d[c])).join(',')));
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));
+  a.download='vectracore_decisions.csv'; a.click();
+}
+$('#pick').onclick=()=>$('#file').click();
+$('#file').onchange=e=>readFiles([...e.target.files]);
+$('#demo').onclick=demo;
+$('#csv').onclick=toCsv;
+$('#newfiles').onclick=()=>{REPORT=null;LOG=new Map();$('#root').innerHTML='';$('#actions').style.display='none';$('#drop').style.display='block';$('#loaded').textContent='';$('#meta').textContent='Load your evaluation report.';};
+const dz=$('#drop');
+dz.ondragover=e=>{e.preventDefault();dz.classList.add('over');};
+dz.ondragleave=()=>dz.classList.remove('over');
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');readFiles([...e.dataTransfer.files]);};
+/* ---------- LIVE mode: used automatically when served by the Flask app ---------- */
+let LIVE=false, FP='', timer=null;
+const fp=j=>[j.generated_at,j.decisions.length,j.overall.awaiting,j.overall.pending,j.overall.wins,j.overall.losses,(j.decisions[0]||{}).timestamp].join('|');
+function liveText(j){
+  const a=j.auto||{};
+  let t=`<b class="win">&#9679; LIVE</b> <span class="mut">refreshed ${new Date().toLocaleTimeString()}`;
+  if(a.running) t+=' | checking new predictions against Twelve Data...';
+  else if(a.enabled){ const m=a.next_run?Math.max(0,Math.round((a.next_run*1000-Date.now())/60000)):null;
+    t+=` | auto-check every ${a.interval_minutes} min`+(m!=null?`, next in ~${m} min`:''); }
+  else t+=' | auto-check is off';
+  if(a.last_ok===false) t+=` | <span class="loss">last check failed: ${esc(a.last_message)}</span>`;
+  return t+'</span>';
+}
+async function pull(first){
+  clearTimeout(timer);
+  let next=30000;
+  try{
+    const r=await fetch('/admin/dashboard/data',{credentials:'same-origin',cache:'no-store'});
+    if(r.status===403){ $('#meta').textContent='Not authorized. Log in as admin first, then reload.'; return; }
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    if(!j.ready){
+      if(first){ $('#meta').textContent=j.message||'No data yet.'; $('#drop').style.display='none'; $('#actions').style.display='flex';
+        $('#livectl').style.display='inline-flex'; $('#newfiles').style.display='none'; LIVE=true; }
+    } else {
+      LIVE=true; $('#drop').style.display='none'; $('#actions').style.display='flex';
+      $('#livectl').style.display='inline-flex'; $('#newfiles').style.display='none';
+      const f=fp(j), changed=f!==FP; FP=f; DATA=j;
+      if(changed){
+        $('#meta').textContent=`Last market check ${j.generated_at?j.generated_at.slice(0,16).replace('T',' ')+' UTC':'never'} | lookback ${j.lookback_days??'?'} days | ${j.records_read} predictions logged`;
+        render();
+      }
+    }
+    $('#live').innerHTML=liveText(j);
+    if(j.auto&&j.auto.running) next=3000;
+  }catch(e){
+    if(first){ $('#meta').textContent='Not connected to the app. Open this page from /admin/dashboard for live data, or load files below.';
+      $('#drop').style.display='block'; return; }
+    $('#live').innerHTML='<span class="loss">connection lost, retrying...</span>';
+  }
+  timer=setTimeout(()=>pull(false), document.hidden?60000:next);
+}
+$('#refresh').onclick=async()=>{
+  $('#refresh').disabled=true;
+  try{
+    const r=await fetch('/admin/dashboard/refresh',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-Requested-With':'vectra-dashboard'},body:JSON.stringify({days:+$('#days').value})});
+    if(r.status!==202){ const j=await r.json().catch(()=>({})); $('#live').innerHTML='<span class="loss">'+esc(j.error||'Could not start')+'</span>'; }
+  }finally{ $('#refresh').disabled=false; pull(false); }
+};
+pull(true);
+</script>
+</body></html>
