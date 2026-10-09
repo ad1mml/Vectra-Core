@@ -1670,6 +1670,69 @@ def _validate_chart_result(result):
     return True, None
 
 
+_UNIDENTIFIED_MARKERS = ("not identif", "not visible", "not available", "unknown", "n/a")
+
+
+def _is_unidentified(value):
+    """True when a symbol/timeframe is empty or a 'could not read it' placeholder."""
+    if value is None:
+        return True
+    text = str(value).strip().lower()
+    if text in ("", "none", "null", "na", "-"):
+        return True
+    return any(marker in text for marker in _UNIDENTIFIED_MARKERS)
+
+
+_TF_PATTERN = re.compile(r"\b(\d{1,3})\s*(min|mins|minutes?|m|hrs?|hours?|h|days?|d|weeks?|w)\b", re.IGNORECASE)
+
+
+def _detect_timeframe(text):
+    """Best-effort timeframe from the user's caption, e.g. '15m', '4H', 'daily'.
+    Returns an evaluator-friendly string like '15min', '4h', '1day', or None."""
+    if not text:
+        return None
+    lowered = text.lower()
+    if re.search(r"\bdaily\b", lowered):
+        return "1day"
+    if re.search(r"\bweekly\b", lowered):
+        return "1week"
+    match = _TF_PATTERN.search(text)
+    if not match:
+        return None
+    number, unit = int(match.group(1)), match.group(2).lower()
+    if number <= 0:
+        return None
+    if unit.startswith("m") and not unit.startswith("mo"):
+        return f"{number}min"
+    if unit.startswith("h"):
+        return f"{number}h"
+    if unit.startswith("d"):
+        return "1day"
+    if unit.startswith("w"):
+        return "1week"
+    return None
+
+
+def _apply_caption_fallbacks(result, question):
+    """Fill symbol/timeframe from what the USER typed, only when the AI could
+    not read them off the chart. Never overrides a value the AI did read.
+    Returns a dict describing which fields came from the caption."""
+    used = {}
+    if not isinstance(result, dict) or not question:
+        return used
+    if _is_unidentified(result.get("symbol")):
+        sym = _detect_symbol(question)
+        if sym:
+            result["symbol"] = sym
+            used["symbol_source"] = "caption"
+    if _is_unidentified(result.get("timeframe")):
+        tf = _detect_timeframe(question)
+        if tf:
+            result["timeframe"] = tf
+            used["timeframe_source"] = "caption"
+    return used
+
+
 # ---------------------------------------------------------------------------
 # RISK/REWARD ANNOTATION + FLOOR (no forcing, no fabrication)
 # ---------------------------------------------------------------------------
@@ -3177,9 +3240,25 @@ USER REQUEST
                              "Please upload the chart again \u2014 this attempt wasn't counted.",
                 }), 502
 
+            # What the AI itself proposed, captured BEFORE any code gate can
+            # downgrade it. Only used for benchmark logging; never shown to the
+            # user and never fed back into the model.
+            pre_gate = {
+                "decision": result.get("decision"),
+                "entry": result.get("entry"),
+                "stop_loss": result.get("stop_loss"),
+                "take_profit": result.get("take_profit"),
+                "take_profit_1": result.get("take_profit_1"),
+            }
+
             result = _sanity_check_levels(result, chart_facts)
             result = _enforce_min_rr(result)
             result = _no_na_result(result)
+
+            # If the AI could not read the symbol/timeframe, use what the user
+            # typed in the caption (never overrides what the AI did read).
+            log_meta = {"pre_gate": pre_gate}
+            log_meta.update(_apply_caption_fallbacks(result, question))
 
             # The three plans' JSON schemas (default_prompt.py, pro_json.py,
             # vip_json.py) all use lowercase snake_case keys ("symbol",
@@ -3239,7 +3318,7 @@ USER REQUEST
             # missing or logging fails, chart analysis still returns normally.
             try:
                 from benchmark import log_prediction
-                log_prediction(user_email, plan, result)
+                log_prediction(user_email, plan, result, meta=log_meta)
             except Exception:
                 app.logger.exception("benchmark log failed")
 

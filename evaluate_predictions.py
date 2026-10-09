@@ -9,6 +9,7 @@ Usage:
     python3 evaluate_predictions.py
     python3 evaluate_predictions.py --days 30
     python3 evaluate_predictions.py --days 30 --exclude-lines 1,2
+    python3 evaluate_predictions.py --log-file path/to/other.jsonl
 
 Environment:
     TWELVE_DATA or TWELVE_DATA_KEY, or a TWELVE_DATA entry in .env
@@ -131,15 +132,37 @@ def get_field(record: dict, prediction: dict, *names):
     return None
 
 
+SYMBOL_ALIASES = {
+    "GOLD": "XAU/USD", "XAUUSD": "XAU/USD",
+    "SILVER": "XAG/USD", "XAGUSD": "XAG/USD",
+}
+CRYPTO_BASES = ("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "LTC", "BNB", "DOT", "LINK")
+
+
+def to_provider_symbol(symbol):
+    """Map common chart tickers to Twelve Data's format (EURUSD -> EUR/USD)."""
+    if not symbol or "/" in symbol:
+        return symbol
+    if symbol in SYMBOL_ALIASES:
+        return SYMBOL_ALIASES[symbol]
+    crypto = re.fullmatch(r"(" + "|".join(CRYPTO_BASES) + r")(USDT|USD)", symbol)
+    if crypto:
+        return f"{crypto.group(1)}/{crypto.group(2)}"
+    if re.fullmatch(r"[A-Z]{6}", symbol):
+        return f"{symbol[:3]}/{symbol[3:]}"
+    return symbol
+
+
 def normalize_symbol(value):
     if value is None:
         return None
     symbol = str(value).strip().upper()
-    if symbol.lower() in MISSING:
+    lowered = symbol.lower()
+    if lowered in MISSING or "identifiable" in lowered or "not visible" in lowered:
         return None
-    # Remove whitespace only; preserve slash/dash separators accepted by Twelve Data.
+    # Remove whitespace, then map to the provider's format.
     symbol = re.sub(r"\s+", "", symbol)
-    return symbol or None
+    return to_provider_symbol(symbol) or None
 
 
 def normalize_decision(record: dict, prediction: dict) -> str:
@@ -181,14 +204,14 @@ def resolve_level(record: dict, prediction: dict, fields: tuple[str, ...],
     return extract_labeled_price(decision_text, labels)
 
 
-def load_records():
-    if not LOG_FILE.exists():
+def load_records(log_file=LOG_FILE):
+    if not log_file.exists():
         raise FileNotFoundError(
-            f"Prediction log not found: {LOG_FILE}. Ensure benchmark.py has logged predictions."
+            f"Prediction log not found: {log_file}. Ensure benchmark.py has logged predictions."
         )
     records = []
     malformed = 0
-    with LOG_FILE.open("r", encoding="utf-8") as handle:
+    with log_file.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             if not line.strip():
                 continue
@@ -363,7 +386,16 @@ def parse_args(argv):
                         help=f"lookback window in days (1-{MAX_DAYS}, default {DEFAULT_DAYS})")
     parser.add_argument("--exclude-lines", default="",
                         help="comma-separated log line numbers to ignore (e.g. test records): 1,2")
+    parser.add_argument("--log-file", default=None, help="evaluate a different JSONL log")
+    parser.add_argument("--report-file", default=None, help="write the report to this path")
     args = parser.parse_args(argv)
+    args.log_file = Path(args.log_file) if args.log_file else LOG_FILE
+    if args.report_file:
+        args.report_file = Path(args.report_file)
+    elif args.log_file != LOG_FILE:
+        args.report_file = args.log_file.with_name(args.log_file.stem + "_report.json")
+    else:
+        args.report_file = REPORT_FILE
     args.days = max(1, min(MAX_DAYS, args.days))
     try:
         args.excluded = {int(x) for x in args.exclude_lines.split(",") if x.strip()}
@@ -379,12 +411,14 @@ def summarize(details):
         group = plans.setdefault(plan, {
             "wins": 0, "losses": 0, "pending": 0, "ambiguous": 0,
             "not_evaluable": 0, "no_trade": 0, "insufficient_data": 0,
-            "errors": 0, "r_values": [],
+            "errors": 0, "gate_blocked": 0, "r_values": [],
         })
         outcome = item.get("outcome")
         if outcome in VALID_OUTCOMES:
             key = {"win": "wins", "loss": "losses", "error": "errors"}.get(outcome, outcome)
             group[key] += 1
+        if item.get("gate_blocked"):
+            group["gate_blocked"] += 1
         if outcome in {"win", "loss"}:
             group["r_values"].append(float(item["r_multiple"]))
 
@@ -414,7 +448,7 @@ def main():
         return 1
 
     try:
-        rows, malformed = load_records()
+        rows, malformed = load_records(args.log_file)
     except (OSError, FileNotFoundError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
@@ -459,6 +493,19 @@ def main():
         if timestamp > now:
             details.append({**base, "outcome": "not_evaluable", "reason": "prediction timestamp is in the future"})
             continue
+        # A Wait/no-trade needs no candles, so it must not be reported as
+        # "not evaluable" just because the symbol or timeframe was unreadable.
+        if normalize_decision(record, prediction) == "wait":
+            entry = {**base, "outcome": "no_trade",
+                     "reason": "explicit Hold/Wait/no-trade decision"}
+            meta = record.get("meta") if isinstance(record.get("meta"), dict) else {}
+            pre = meta.get("pre_gate") if isinstance(meta.get("pre_gate"), dict) else {}
+            if re.match(r"^(buy|sell|long|short)\b", str(pre.get("decision") or "").strip().lower()):
+                entry["gate_blocked"] = True
+                entry["reason"] = f"AI proposed {pre.get('decision')}; blocked by a safety gate"
+                entry["proposed"] = {k: pre.get(k) for k in ("entry", "stop_loss", "take_profit", "take_profit_1")}
+            details.append(entry)
+            continue
         if not symbol or not timeframe:
             details.append({**base, "outcome": "not_evaluable", "reason": "missing symbol or unsupported timeframe"})
             continue
@@ -481,7 +528,7 @@ def main():
     report = {
         "generated_at": now.isoformat(),
         "lookback_days": days,
-        "source_log": str(LOG_FILE),
+        "source_log": str(args.log_file),
         "records_read": len(rows),
         "malformed_lines": malformed,
         "provider": "Twelve Data",
@@ -493,6 +540,7 @@ def main():
         "methodology": [
             "Only Buy/Sell predictions with numeric, directionally valid entry/SL/TP are trade-evaluable.",
             "Hold/Wait/no-trade decisions are reported as no_trade and excluded from trade win-rate denominators.",
+            "gate_blocked counts no_trade records where the AI proposed Buy/Sell but a code safety gate (e.g. the 1:1 reward-to-risk floor) changed it to Wait.",
             "Only candles with start timestamps strictly later than the prediction timestamp are evaluated.",
             "If SL and TP touch in the same candle, outcome is ambiguous and excluded from wins/losses.",
             "Pending means candles were available after the prediction but neither level was touched.",
@@ -502,14 +550,14 @@ def main():
         "note": "Historical candle-based estimate only; not proof of future profitability. Verify provider timezone and coverage before relying on the report.",
     }
     try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        REPORT_FILE.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        args.report_file.parent.mkdir(parents=True, exist_ok=True)
+        args.report_file.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     except OSError as exc:
         print(f"ERROR: Could not write report: {exc}", file=sys.stderr)
         return 1
 
     print(f"Evaluated {len(details)} logged records ({malformed} malformed lines skipped).")
-    print(f"Report saved to: {REPORT_FILE}")
+    print(f"Report saved to: {args.report_file}")
     print()
     if not summary:
         print("No prediction records were available.")
@@ -519,7 +567,7 @@ def main():
             f"win_rate={values['win_rate_percent']}% avg_R={values['average_r']} "
             f"expectancy_R={values['expectancy_r_per_completed_trade']} "
             f"pending={values['pending']} ambiguous={values['ambiguous']} "
-            f"no_trade={values['no_trade']} insufficient_data={values['insufficient_data']} "
+            f"no_trade={values['no_trade']} gate_blocked={values['gate_blocked']} insufficient_data={values['insufficient_data']} "
             f"not_evaluable={values['not_evaluable']} errors={values['errors']}"
         )
     print("\nReminder: no-trade, pending, ambiguous, missing-level, and insufficient-data records are not wins/losses.")

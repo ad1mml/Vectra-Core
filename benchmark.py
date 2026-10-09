@@ -253,7 +253,12 @@ def _user_hash(user_email: str) -> str | None:
     return hashlib.sha256(email.encode("utf-8")).hexdigest()[:16]
 
 
-def log_prediction(user_email: str, plan: str, result: Mapping[str, Any]) -> None:
+def log_prediction(
+    user_email: str,
+    plan: str,
+    result: Mapping[str, Any],
+    meta: Mapping[str, Any] | None = None,
+) -> None:
     """Append one prediction record; callers should catch logging errors."""
     if not isinstance(result, Mapping):
         raise TypeError("result must be a mapping")
@@ -271,6 +276,24 @@ def log_prediction(user_email: str, plan: str, result: Mapping[str, Any]) -> Non
         "user_id_hash": _user_hash(user_email),
         "prediction": prediction,
     }
+
+    # Optional context from the app: what the AI proposed BEFORE any code gate
+    # (pre_gate) and whether symbol/timeframe came from the user's caption.
+    # Only a small whitelist is kept; nothing else from the caller is logged.
+    if isinstance(meta, Mapping):
+        safe_meta = {}
+        pre_gate = meta.get("pre_gate")
+        if isinstance(pre_gate, Mapping):
+            safe_meta["pre_gate"] = {
+                key: _safe_value(pre_gate.get(key))
+                for key in ("decision", "entry", "stop_loss", "take_profit", "take_profit_1")
+                if key in pre_gate
+            }
+        for key in ("symbol_source", "timeframe_source"):
+            if meta.get(key) in ("caption",):
+                safe_meta[key] = meta[key]
+        if safe_meta:
+            record["meta"] = safe_meta
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     line = json.dumps(
