@@ -1105,29 +1105,44 @@ def _classify_ai_error(exc) -> str:
     return "overloaded"
 
 
-# model name -> time.time() until which it is skipped after a 429. Skipping a
-# model we KNOW is out of quota saves its whole round-trip (and stops burning
-# more of the free-tier requests) instead of re-hitting it on every click.
-_model_blocked_until = {}
+# model name -> (time.time() until which it is skipped, why). A model that just
+# failed is skipped for a short cooldown so the next click goes straight to a
+# model that might work instead of re-paying the same failure:
+#   quota    429 -> Google's retry hint (30-300s, default 60s)
+#   timeout  504 -> 30s (it cost the user ~20s of waiting last time)
+#   overloaded 503 -> 15s
+_model_blocked = {}
 _model_block_lock = threading.Lock()
 
 
-def _block_model_after_quota(model, exc):
-    delay = 60.0
-    m = re.search(r"retry(?:Delay)?\W+(?:in\s+)?\"?([\d.]+)\s*s", str(exc), re.IGNORECASE)
-    if m:
-        try:
-            delay = float(m.group(1)) + 2
-        except ValueError:
-            pass
-    delay = max(30.0, min(delay, 300.0))
+def _block_model_after_failure(model, kind, exc):
+    if kind == "quota":
+        delay = 60.0
+        m = re.search(r"retry(?:Delay)?\W+(?:in\s+)?\"?([\d.]+)\s*s", str(exc), re.IGNORECASE)
+        if m:
+            try:
+                delay = float(m.group(1)) + 2
+            except ValueError:
+                pass
+        delay = max(30.0, min(delay, 300.0))
+    elif kind == "timeout":
+        delay = 30.0
+    elif kind == "overloaded":
+        delay = 15.0
+    else:
+        return
     with _model_block_lock:
-        _model_blocked_until[model] = time.time() + delay
+        _model_blocked[model] = (time.time() + delay, kind)
 
 
 def _model_is_blocked(model) -> bool:
     with _model_block_lock:
-        return time.time() < _model_blocked_until.get(model, 0)
+        return time.time() < _model_blocked.get(model, (0, ""))[0]
+
+
+def _model_block_info(model):
+    with _model_block_lock:
+        return _model_blocked.get(model, (0, "overloaded"))
 
 
 def _adapt_thinking_config(config, model):
@@ -1535,13 +1550,22 @@ def _run_ai_chain(model, contents, config=None, deadline=HARD_DEADLINE_SECONDS, 
             return r
 
     last_exc = None
+    last_transient_exc = None
     kinds = []
-    skipped_blocked = []
-    for m in _gemini_model_chain(model):
-        if _model_is_blocked(m):
-            skipped_blocked.append(m)
-            kinds.append("quota")
-            continue
+
+    chain = _gemini_model_chain(model)
+    available = [m for m in chain if not _model_is_blocked(m)]
+    if not available and chain:
+        # Everything is cooling down. Don't refuse instantly on a stale
+        # cooldown — make one real attempt on the model that recovers first.
+        available = [min(chain, key=lambda x: _model_block_info(x)[0])]
+    skipped = [m for m in chain if m not in available]
+    for m in skipped:
+        kinds.append(_model_block_info(m)[1])
+    if skipped:
+        app.logger.warning("Skipping models in cooldown: %s", ", ".join(skipped))
+
+    for m in available:
         if last_exc is not None and left() < 10:
             break
         try:
@@ -1553,25 +1577,29 @@ def _run_ai_chain(model, contents, config=None, deadline=HARD_DEADLINE_SECONDS, 
             )
         except Exception as e:
             last_exc = e
-            if not _is_transient_error(e):
-                raise
-            kind = _classify_ai_error(e)
+            transient = _is_transient_error(e)
+            # A non-transient error on ONE model (bad/retired model name,
+            # setting that model rejects) must not abort the chain — the next
+            # model may be fine. It is surfaced below if nothing else works.
+            kind = _classify_ai_error(e) if transient else "error"
             kinds.append(kind)
-            if kind == "quota":
-                _block_model_after_quota(m, e)
+            if transient:
+                last_transient_exc = e
+            _block_model_after_failure(m, kind, e)
             # Logged at ERROR with the real reason so it is visible in the
             # server log which model failed and why.
             app.logger.error("AI model %s failed [%s]: %s", m, kind, str(e)[:300])
-
-    if skipped_blocked:
-        app.logger.warning("Skipped models in quota cooldown: %s", ", ".join(skipped_blocked))
 
     if not OPENROUTER_FIRST and left() > 8:
         r = _try_openrouter_first(contents, config, timeout=min(OPENROUTER_TIMEOUT_SECONDS, left()))
         if r is not None:
             return r
 
-    summary = str(last_exc)[:300] if last_exc else "all models are in quota cooldown"
+    if last_exc is not None and last_transient_exc is None:
+        # Every attempt failed for a non-transient reason: show the real error.
+        raise last_exc
+
+    summary = str(last_exc)[:300] if last_exc else "all models are in cooldown"
     raise _AIChainError(f"All AI models failed ({', '.join(kinds) or 'no attempt'}): {summary}", kinds)
 
 
