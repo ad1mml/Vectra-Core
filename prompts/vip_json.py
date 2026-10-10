@@ -86,9 +86,15 @@ identically at VIP's equal-or-greater rigor):
   six-gate bar.
 - entry / stop_loss: per vip_TPSL.py and decision_spine.py Section 2.
 - take_profit_1 / take_profit_2 / take_profit_3: per vip_TPSL.py's ladder
-  rules. Empty strings on Wait, or for any rung the chart doesn't
-  genuinely support.
-- risk_reward: honest ratio against take_profit_1 only.
+  rules. take_profit_1 is the first genuinely significant structural
+  level, not a trivial nearby bump. Empty strings on Wait, or for any rung
+  the chart doesn't genuinely support. On a Wait caused by a better entry
+  location, the pending level, its invalidation and TP1 go in
+  buy_trigger/sell_trigger, not in these fields.
+- risk_reward: your ratio against take_profit_1 only, as a plain
+  number-string. The backend recomputes it from entry, stop_loss and
+  take_profit_1 and overrides this value, so the prices must be right;
+  never adjust them to reach a ratio.
 - vip_self_review: brief, genuine summary of the vip_self_review.py
   adversarial pass.
 - reasoning: the full synthesized conclusion from vip_reasoning.py,

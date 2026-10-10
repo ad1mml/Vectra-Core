@@ -53,6 +53,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from prompts.followup_prompt import FOLLOWUP_PROMPT as FOLLOWUP_PROMPT_BASE
 from prompts.vip_prompt import VIP_PROMPT
 from market_facts import facts_block as _facts_block, facts_dict as _facts_dict
+import trade_validation as tv
 from prompts.default_prompt import DEFAULT_PROMPT
 from prompts.pro_prompt import PRO_PROMPT
 import requests
@@ -2374,7 +2375,9 @@ def _apply_caption_fallbacks(result, question):
 # pro_TPSL.py / vip_TPSL.py / the risk/validator/decision modules. It is
 # not re-litigated or overridden here.
 
-MIN_ACCEPTABLE_RR = 1.0  # near-zero sanity floor, not a target — see above
+# Floor is configurable via MIN_ACCEPTABLE_RR in .env (default 1.0, unchanged).
+# PREFERRED_RR (default 1.5) is a soft label only - see trade_validation.py.
+MIN_ACCEPTABLE_RR = tv.MIN_ACCEPTABLE_RR
 
 
 def _parse_price(val):
@@ -2411,7 +2414,7 @@ def _calc_rr(entry, stop_loss, take_profit):
     return reward / risk
 
 
-def _downgrade_to_wait(result, rr, reason="unusable", custom_note=None, custom_detail=None):
+def _downgrade_to_wait(result, rr, reason="unusable", custom_note=None, custom_detail=None, code=None, pending=None):
     """Converts a Buy/Sell result dict to a WAIT result dict in place.
     Preserves every other field (chart read, structure, etc.) untouched —
     only decision-dependent fields change. Leaves a trail in 'reasoning'
@@ -2434,10 +2437,42 @@ def _downgrade_to_wait(result, rr, reason="unusable", custom_note=None, custom_d
     tp = result.get("take_profit", "")
     sl = result.get("stop_loss", "")
 
+    # Audit trail: remember exactly what the model proposed and WHY the code
+    # changed it, using a stable reason code (see trade_validation.py).
+    default_codes = {
+        "unusable": tv.CODE_UNPARSEABLE,
+        "sub_floor": tv.CODE_RR_BELOW_MIN,
+        "bad_levels": tv.CODE_STOP_WRONG_SIDE,
+        "price_mismatch": tv.CODE_PRICE_FAR_FROM_LIVE,
+    }
+    tv.record_validation(
+        result, "changed",
+        code=code or default_codes.get(reason, str(reason).upper()),
+        detail=custom_detail or (f"rr={rr:.2f}" if isinstance(rr, (int, float)) else None),
+        original={
+            "decision": original_decision, "entry": entry,
+            "stop_loss": sl, "take_profit": tp,
+        },
+    )
+    if pending:
+        # A real setup that is simply not at the current price yet. Keep the
+        # levels in their own field so they are not lost (and so a follow-up
+        # or the next upload of the same symbol can check whether price got there).
+        result["pending_setup"] = pending
+    result["entry_type"] = "pending" if pending else "none"
+
     result["decision"] = "Wait"
     result["entry"] = ""
     result["take_profit"] = ""
     result["stop_loss"] = ""
+    # A Wait must not keep trade numbers from the rejected trade. Before this
+    # fix, risk_reward (and VIP's take_profit_1/2/3) survived a downgrade, so a
+    # Wait could still display e.g. "0.85" next to no trade.
+    if "risk_reward" in result:
+        result["risk_reward"] = ""
+    for _k in list(result.keys()):
+        if re.fullmatch(r"take_profit_\d+", _k):
+            result[_k] = ""
 
     # Preserve any directional probabilities the model already produced.
     # Older code overwrote an RR-rejected BUY/SELL with arbitrary 45/15
@@ -2514,8 +2549,11 @@ MAX_ENTRY_DISTANCE_DAILY_ATR = 5.0
 
 def _sanity_check_levels(result, facts=None):
     """Code-side checks on a Buy/Sell result. Never edits levels.
-      1. Level sides (all plans, no data needed): Buy needs SL < entry < TP,
-         Sell needs TP < entry < SL. Otherwise -> Wait.
+      1. Trade geometry (all plans, no data needed): Buy needs SL < entry < TP,
+         Sell needs TP < entry < SL, risk must be > 0. Otherwise -> Wait.
+      1b. Entry vs current_price (all plans): a Buy/Sell whose entry is far
+         from the model's own current_price is a PENDING idea, so it is shown
+         as Wait with the levels kept in "pending_setup".
       2. Live price check (only when real candles were fetched): entry, SL
          and TP must be near the real market price, else -> Wait.
       3. Higher-timeframe conflict (only with real candles): NOT a downgrade,
@@ -2531,23 +2569,73 @@ def _sanity_check_levels(result, facts=None):
     sl = _parse_price(result.get("stop_loss"))
     tp = _parse_price(result.get("take_profit"))
 
-    # 1) sides
-    if e is not None and sl is not None and tp is not None:
-        sides_ok = (sl < e < tp) if decision == "buy" else (tp < e < sl)
-        if not sides_ok:
+    # 1) trade geometry (direction-aware; all plans, no market data needed)
+    geo = tv.trade_geometry(decision, e, sl, tp)
+    if e is not None and sl is not None and tp is not None and not geo["ok"]:
+        app.logger.warning(
+            "LEVEL CHECK: %s failed geometry (%s) -> Wait (entry=%s sl=%s tp=%s)",
+            decision, geo["code"], e, sl, tp,
+        )
+        if geo["code"] == tv.CODE_ZERO_RISK:
+            what = "the stop-loss was at the same price as the entry (zero risk)"
+        elif geo["code"] == tv.CODE_TARGET_WRONG_SIDE:
+            what = f"the take-profit was on the wrong side of the entry for a {decision}"
+        else:
+            what = f"the stop-loss was on the wrong side of the entry for a {decision}"
+        note = (
+            f"A {decision} idea formed, but the levels the analysis produced "
+            f"were not consistent ({what}), so no trade is shown. "
+            f"Upload the chart again for a fresh read."
+        )
+        return _downgrade_to_wait(
+            result, None, reason="bad_levels", custom_note=note,
+            custom_detail=f"rejected, {what}", code=geo["code"],
+        )
+
+    # 1b) market entry vs pending entry. The shared rules (decision_spine.py
+    # 2.3) say a market-style Buy/Sell must have its entry near current_price.
+    # That rule used to exist only as prompt text; nothing in code checked it.
+    cp = tv.parse_price(result.get("current_price"))
+    if cp is None:
+        tv.record_validation(
+            result, "passed", code=tv.CODE_CURRENT_PRICE_MISSING,
+            detail="no readable current_price, so entry distance could not be checked",
+            warning=True,
+        )
+    elif geo["ok"]:
+        # Decide BEFORE writing our own entry_type, so our label is never
+        # mistaken for the model declaring a pending order.
+        model_declared_pending = tv.declared_pending(result)
+        kind = tv.classify_entry(result)
+        result["entry_type"] = kind
+        if (kind == "pending" and not model_declared_pending
+                and geo["rr"] >= tv.MIN_ACCEPTABLE_RR - 1e-9):
+            dist = tv.entry_distance_pct(e, cp)
+            side = "buy" if decision == "buy" else "sell"
             app.logger.warning(
-                "LEVEL CHECK: %s with wrong sides -> Wait (entry=%s sl=%s tp=%s)",
-                decision, e, sl, tp,
+                "LEVEL CHECK: %s entry %.5f is %.2f%% from current price %.5f -> pending, shown as Wait",
+                decision, e, dist, cp,
             )
+            pending = {
+                "side": side,
+                "entry": str(result.get("entry")),
+                "stop_loss": str(result.get("stop_loss")),
+                "take_profit": str(result.get("take_profit")),
+                "rr": f"{geo['rr']:.2f}",
+            }
             note = (
-                f"A {decision} idea formed, but the levels the analysis produced "
-                f"were not consistent (stop-loss and take-profit were not on the "
-                f"correct sides of the entry for a {decision}), so no trade is "
-                f"shown. Upload the chart again for a fresh read."
+                f"A {side} setup formed, but its entry ({result.get('entry')}) is "
+                f"{dist:.2f}% away from the current price ({result.get('current_price')}), "
+                f"so it is a pending idea, not something to enter right now. "
+                f"It becomes actionable only if price reaches {result.get('entry')} and "
+                f"confirms there (stop {result.get('stop_loss')}, target "
+                f"{result.get('take_profit')}, reward-to-risk {geo['rr']:.2f}:1)."
             )
             return _downgrade_to_wait(
-                result, None, reason="bad_levels", custom_note=note,
-                custom_detail="rejected, stop-loss/take-profit were on the wrong sides of entry",
+                result, geo["rr"], reason="pending_entry", custom_note=note,
+                custom_detail=f"entry {dist:.2f}% from current price, limit is "
+                              f"{tv.MAX_MARKET_ENTRY_DISTANCE_PCT}%",
+                code=tv.CODE_ENTRY_FAR_PENDING, pending=pending,
             )
 
     if not facts:
@@ -2603,9 +2691,9 @@ def _enforce_min_rr(result):
         "target to force" gate — it's a near-zero sanity floor, and it
         never stretches/tightens a level to avoid it, it just reports
         WAIT honestly when the real ratio is under 1:1.
-      - otherwise -> the true R:R is written into "risk_reward" (for
-        schemas that have it) and decision/entry/take_profit/stop_loss
-        are left exactly as the model returned them."""
+      - otherwise -> the true R:R is written into "risk_reward" (always,
+        recomputed here, direction-aware) and decision/entry/take_profit/
+        stop_loss are left exactly as the model returned them."""
     if not isinstance(result, dict):
         return result
 
@@ -2613,19 +2701,21 @@ def _enforce_min_rr(result):
     if decision not in ("buy", "sell"):
         return result
 
-    rr = _calc_rr(
+    geo = tv.trade_geometry(
+        decision,
         result.get("entry"),
         result.get("stop_loss"),
         result.get("take_profit"),
     )
+    rr = geo["rr"]
 
-    if rr is None:
+    if not geo["ok"]:
         app.logger.warning(
-            "RR ANNOTATION: downgraded %s -> Wait, entry/stop unusable (entry=%s sl=%s tp=%s)",
-            result.get("decision"), result.get("entry"),
+            "RR ANNOTATION: downgraded %s -> Wait, geometry invalid (%s) (entry=%s sl=%s tp=%s)",
+            result.get("decision"), geo["code"], result.get("entry"),
             result.get("stop_loss"), result.get("take_profit"),
         )
-        return _downgrade_to_wait(result, rr, reason="unusable")
+        return _downgrade_to_wait(result, None, reason="unusable", code=geo["code"])
 
     if rr < MIN_ACCEPTABLE_RR - 1e-9:
         app.logger.warning(
@@ -2635,10 +2725,26 @@ def _enforce_min_rr(result):
         )
         return _downgrade_to_wait(result, rr, reason="sub_floor")
 
-    # Always surface the true ratio for schemas with a display field —
-    # this never influences the decision, it's pure transparency.
-    if "risk_reward" in result:
-        result["risk_reward"] = f"{rr:.2f}"
+    # Always surface the true ratio. The ratio shown to the user is the one
+    # computed here from the final entry/stop/target, never the model's own number.
+    result["risk_reward"] = f"{rr:.2f}"
+    result["rr_quality"] = tv.rr_quality(rr)  # "acceptable" or "preferred"
+    if "entry_type" not in result:
+        result["entry_type"] = tv.classify_entry(result)
+    if result["rr_quality"] == "acceptable":
+        tv.record_validation(
+            result, "passed", code=tv.CODE_RR_BELOW_PREFERRED,
+            detail=f"rr {rr:.2f} clears the {MIN_ACCEPTABLE_RR:.2f} floor but is below the "
+                   f"{tv.PREFERRED_RR:.2f} preferred level",
+            warning=True,
+        )
+    if rr > tv.RR_SUSPICIOUSLY_HIGH:
+        tv.record_validation(
+            result, "passed", code=tv.CODE_RR_HIGH_CHECK_TARGET,
+            detail=f"rr {rr:.2f} is unusually high; check the target is a real level",
+            warning=True,
+        )
+    tv.record_validation(result, "passed")
     return result
 
 

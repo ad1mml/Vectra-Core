@@ -1635,14 +1635,47 @@
             const isTrade = decisionUpper === 'BUY' || decisionUpper === 'SELL';
 
             const hasRR = data.risk_reward !== undefined && data.risk_reward !== null && data.risk_reward !== '';
+            // Backend (trade_validation.py) may attach rr_quality / entry_type.
+            // Both are optional free-text labels, so just show whatever arrives.
+            const rrQualityText = (data.rr_quality || '').toString().replace(/_/g, ' ').trim();
+            const entryTypeText = (data.entry_type || '').toString().replace(/_/g, ' ').trim();
             const rrBoxHTML = hasRR
-                ? `<div><span class="label">Risk / Reward</span><span class="value rr">${escapeHtml(data.risk_reward)}R</span></div>`
+                ? `<div><span class="label">Risk / Reward</span><span class="value rr">${escapeHtml(data.risk_reward)}R</span>${rrQualityText ? `<span class="label" style="margin-top:4px;margin-bottom:0;text-transform:none;">${escapeHtml(rrQualityText)}</span>` : ''}</div>`
                 : '';
+            const entryLabel = entryTypeText ? `Entry (${escapeHtml(entryTypeText)})` : 'Entry';
+
+            // Pro returns one take_profit; VIP returns take_profit_1/2/3.
+            const tpRungs = [
+                ['Take Profit 1', data.take_profit_1],
+                ['Take Profit 2', data.take_profit_2],
+                ['Take Profit 3', data.take_profit_3]
+            ].filter(r => r[1] !== undefined && r[1] !== null && r[1] !== '');
+            const tpBoxesHTML = tpRungs.length
+                ? tpRungs.map(r => `<div><span class="label">${r[0]}</span><span class="value tp">${escapeHtml(r[1])}</span></div>`).join('')
+                : `<div><span class="label">Take Profit</span><span class="value tp">${escapeHtml(data.take_profit || 'N/A')}</span></div>`;
+
+            // Far-from-price setups are returned as Wait with the levels kept in
+            // pending_setup. Shape isn't fixed, so render it generically.
+            let pendingHTML = '';
+            const ps = data.pending_setup;
+            if (!isTrade && ps && typeof ps === 'object' && Object.keys(ps).length) {
+                const rows = Object.entries(ps)
+                    .filter(([, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
+                    .map(([k, v]) => `<div class="field-row"><span class="label">${escapeHtml(k.replace(/_/g, ' '))}</span><span class="value">${escapeHtml(String(v))}</span></div>`)
+                    .join('');
+                if (rows) {
+                    pendingHTML = `
+                        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
+                            <h3 style="margin-bottom:10px;">Pending setup (waiting for a better entry)</h3>
+                            ${rows}
+                        </div>`;
+                }
+            }
 
             const tradeLevelsHTML = isTrade ? `
                         <div class="trade-levels-grid">
-                            <div><span class="label">Entry</span><span class="value">${escapeHtml(data.entry || 'N/A')}</span></div>
-                            <div><span class="label">Take Profit</span><span class="value tp">${escapeHtml(data.take_profit || 'N/A')}</span></div>
+                            <div><span class="label">${entryLabel}</span><span class="value">${escapeHtml(data.entry || 'N/A')}</span></div>
+                            ${tpBoxesHTML}
                             <div><span class="label">Stop Loss</span><span class="value sl">${escapeHtml(data.stop_loss || 'N/A')}</span></div>
                             ${rrBoxHTML}
                         </div>
@@ -1706,6 +1739,7 @@
                     <h3>Decision</h3>
                     <div class="decision-value">${escapeHtml(data.decision || 'N/A')}</div>
                     ${tradeLevelsHTML}
+                    ${pendingHTML}
                 </div>
                 <p class="disclaimer-line">VectraCore provides analytical tooling, not financial advice. This is not a recommendation to buy or sell any asset. Ask a follow-up question anytime for the reasoning behind this call.</p>
             `;

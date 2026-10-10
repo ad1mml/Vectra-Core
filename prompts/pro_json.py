@@ -86,9 +86,13 @@ FIELD NOTES:
 - institutional_score: per pro_score.py's methodology, 0-100.
 - decision: exactly "Buy", "Sell", or "Wait".
 - entry / stop_loss / take_profit: per pro_TPSL.py and decision_spine.py
-  Section 2. Empty strings if decision is "Wait".
-- risk_reward: the honest ratio, as a plain number-string (e.g. "1.8").
-  Empty on Wait.
+  Section 2. Empty strings if decision is "Wait". On a Wait caused by a
+  better entry location, the pending level, its invalidation and the
+  target go in buy_trigger/sell_trigger, not in these fields.
+- risk_reward: your ratio from entry/stop_loss/take_profit, as a plain
+  number-string (e.g. "1.8"). Empty on Wait. The backend recomputes it
+  from the three prices and overrides this value, so the prices must be
+  right; never adjust them to reach a ratio.
 - buy_probability / sell_probability: calibrated 0-100 per pro_decision.py.
 - buy_trigger / sell_trigger: what would need to happen for that side to
   become valid — informative even (especially) on a Wait.

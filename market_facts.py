@@ -125,7 +125,13 @@ def facts_block(per_tf, symbol=""):
         "computed from real candles, so prefer them for levels and context. "
         "If the uploaded chart's current price clearly differs, trust the "
         "chart image for current price and mention the difference. "
-        "Keep SL at least 1x ATR (of the chart's timeframe) from entry. "
+        "Judge the stop against ATR (of the chart's timeframe): a stop "
+        "wider than about 1.5x ATR means the entry is badly located, so look "
+        "for a better entry zone (order block, FVG, 50% of the leg) instead "
+        "of accepting a poor ratio; a stop much tighter than about 0.8x ATR "
+        "will be hit by noise. Never move a stop off structure just to fit "
+        "these numbers. Choose targets from the swing highs/lows and range "
+        "extremes above, not from a typical distance. "
         "If the higher-timeframe trend opposes the trade, say so explicitly "
         "and lower your confidence accordingly.")
     return "\n".join(lines)
