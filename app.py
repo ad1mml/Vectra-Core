@@ -699,27 +699,28 @@ STEP 2 — If it matches, compare what the NEW chart shows with the saved
          of these four:
 
    LONG MET — the saved BUY / long conditions are now fulfilled (price
-      reached the waiting zone and the confirmation it asked for, e.g. the
-      sweep / CHOCH / displacement, has formed). Conclude: confirm the long
-      and, if the Price-Grounding Protocol allows it, give the Buy with
-      entry, stop and target built from the NEW chart. Never output Sell.
+      reached the waiting zone and the confirmation it asked for has formed)
+      AND a Buy is actionable on this chart right now: entry close to the
+      current price, not late. Give the Buy with entry, stop and target
+      built from the NEW chart. Never output Sell.
 
-   SHORT MET — the saved SELL / short conditions are now fulfilled (same
-      logic on the sell side). Conclude: confirm the short and, if the
-      Price-Grounding Protocol allows it, give the Sell with entry, stop and
-      target built from the NEW chart. Never output Buy.
+   SHORT MET — the saved SELL / short conditions are now fulfilled AND a
+      Sell is actionable right now. Give the Sell with entry, stop and target
+      built from the NEW chart. Never output Buy.
 
-   WAITING — the saved setup is still alive: nothing has invalidated it, but
-      neither the long nor the short conditions are fulfilled yet. Continue
-      the same plan, put what is still missing in the buy/sell triggers, and update levels if the new
-      chart sharpens them. Decision stays Wait.
+   WAITING — the saved setup is still alive but its conditions are not fully
+      fulfilled yet. This includes a setup that has formed but whose valid
+      entry is still a pullback / retest away. Decision stays Wait; put what
+      is still missing in the buy/sell triggers and update levels if the new
+      chart sharpens them.
 
    INVALID — the saved setup is no longer valid or usable: its invalidation
-      was broken, its target was already reached, price ran away without a
-      valid entry, the zone was swept without the confirmation, or too much
-      time passed for it to still matter. Mark it INVALID, then analyse
-      the NEW chart as a FRESH analysis and look for a new
-      setup. Do NOT keep defending or re-forcing the old idea.
+      was broken, its target was already reached, price ran away, the
+      conditions WERE fulfilled but it is now too late to enter (the entry
+      is missed), the zone was swept without the confirmation, or too much
+      time passed. Mark it INVALID, then analyse the NEW chart as a FRESH
+      analysis and look for a new setup. Do NOT keep defending or
+      re-forcing the old idea, and never chase a missed entry.
 
 STEP 3 — In every case use the saved analysis as EVIDENCE about
          price behaviour: how price moved since then, how it reacted at the
@@ -2660,6 +2661,35 @@ def _enforce_min_rr(result):
 # only rewrites how "I don't know" is communicated, so nothing here
 # conflicts with decision_spine.py's "never invent data" rule.
 
+def _reconcile_link_with_decision(result):
+    """Keeps the 'previous_analysis_link' card honest: LONG MET is only valid
+    with a Buy, SHORT MET only with a Sell. If the final decision (after the
+    code gates) disagrees, the label is corrected instead of contradicting
+    the Decision card."""
+    if not isinstance(result, dict):
+        return result
+    raw = str(result.get("previous_analysis_link") or "").strip().upper().replace("_", " ")
+    if not raw:
+        return result
+    decision = str(result.get("decision", "")).strip().lower()
+    if raw.startswith("LONG MET"):
+        label = "LONG MET"
+        if not decision.startswith("buy"):
+            label = "INVALID" if decision.startswith("sell") else "WAITING"
+    elif raw.startswith("SHORT MET"):
+        label = "SHORT MET"
+        if not decision.startswith("sell"):
+            label = "INVALID" if decision.startswith("buy") else "WAITING"
+    elif raw.startswith("WAITING"):
+        label = "WAITING"
+    elif raw.startswith("INVALID"):
+        label = "INVALID"
+    else:
+        label = ""
+    result["previous_analysis_link"] = label
+    return result
+
+
 _NA_VALUES = {"", "n/a", "na", "none", "null", "unknown", "-"}
 
 
@@ -3895,6 +3925,7 @@ USER REQUEST
 
             result = _sanity_check_levels(result, chart_facts)
             result = _enforce_min_rr(result)
+            result = _reconcile_link_with_decision(result)
             result = _no_na_result(result)
 
             # If the AI could not read the symbol/timeframe, use what the user

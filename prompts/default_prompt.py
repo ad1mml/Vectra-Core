@@ -141,17 +141,20 @@ Field notes:
   (see SYMBOL MEMORY in the request). Empty string "" when the symbol has no
   saved analysis (brand-new chart). Otherwise EXACTLY one of these four labels
   and nothing else (no explanation, no extra words, no punctuation):
-    "LONG MET"  = the saved BUY/long conditions are now fulfilled on this
-                  chart. Then decision must not be Sell.
-    "SHORT MET" = the saved SELL/short conditions are now fulfilled on this
-                  chart. Then decision must not be Buy.
-    "WAITING"   = the saved setup is still alive but neither side's
-                  conditions are fulfilled yet.
-    "INVALID"   = the saved setup is no longer valid or usable (invalidation
-                  broken, target already reached, price ran away without a
-                  valid entry, zone swept without confirmation, or too old);
-                  this chart is analysed fresh, informed by how price
-                  behaved since.
+    "LONG MET"  = the saved BUY/long conditions are now fulfilled AND a Buy is
+                  actionable on this chart right now (entry close to current
+                  price, not late). Then decision MUST be Buy.
+    "SHORT MET" = the saved SELL/short conditions are now fulfilled AND a Sell
+                  is actionable right now. Then decision MUST be Sell.
+    "WAITING"   = the saved setup is still alive but its conditions are not
+                  fully fulfilled yet, including when the setup has formed but
+                  the valid entry is still a pullback/retest away. Decision
+                  is Wait.
+    "INVALID"   = the saved setup is no longer valid or usable: invalidation
+                  broken, target already reached, price ran away, conditions
+                  were fulfilled but it is now TOO LATE to enter, zone swept
+                  without confirmation, or too old. This chart is analysed
+                  fresh, informed by how price behaved since.
 - "market_structure": one clear sentence — bullish / bearish / ranging,
   and why (which swings), plus which side's liquidity the structure is
   pointing toward.
