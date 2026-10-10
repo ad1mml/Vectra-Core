@@ -46,15 +46,21 @@ FIELD NOTES:
   guess.
 - current_price: the Price-Grounding Protocol anchor (decision_spine.py
   Section 2.1), exactly as read.
-- previous_analysis_link: the link to this user's saved analysis of the SAME
-  symbol (see SYMBOL MEMORY in the request). Empty string "" when the symbol
-  has no saved analysis (brand-new chart). Otherwise ONE or TWO short
-  sentences that start with exactly one status word in capitals followed by
-  " — ": "PENDING — ..." (saved setup still alive, say what is still
-  missing), "TRIGGERED — ..." (the saved conditions were met on this chart,
-  say what happened), or "GONE — ..." (the saved setup is no longer valid or
-  usable, say why, and that this is a fresh analysis informed by how price
-  behaved since). Mention how long ago the saved analysis was made.
+- previous_analysis_link: the link to this user's saved analysis of the SAME symbol
+  (see SYMBOL MEMORY in the request). Empty string "" when the symbol has no
+  saved analysis (brand-new chart). Otherwise EXACTLY one of these four labels
+  and nothing else (no explanation, no extra words, no punctuation):
+    "LONG MET"  = the saved BUY/long conditions are now fulfilled on this
+                  chart. Then decision must not be Sell.
+    "SHORT MET" = the saved SELL/short conditions are now fulfilled on this
+                  chart. Then decision must not be Buy.
+    "WAITING"   = the saved setup is still alive but neither side's
+                  conditions are fulfilled yet.
+    "INVALID"   = the saved setup is no longer valid or usable (invalidation
+                  broken, target already reached, price ran away without a
+                  valid entry, zone swept without confirmation, or too old);
+                  this chart is analysed fresh, informed by how price
+                  behaved since.
 - market_structure: the pro_structure.py read — trend-cycle position,
   range-vs-trend distinction, multi-swing confluence where relevant.
 - support_resistance: LEGACY FIELD NAME — this field carries the LIQUIDITY

@@ -1665,22 +1665,30 @@
                         </div>
             `;
 
-            // Link to the saved analysis of the same symbol (PENDING / TRIGGERED / GONE).
+            // Link to the saved analysis of the same symbol.
+            // Status labels: LONG MET / SHORT MET / WAITING / INVALID
+            // (old PENDING / TRIGGERED / GONE labels are still understood).
             const linkRaw = (data.previous_analysis_link || '').toString().trim();
             let linkCardHTML = '';
             if (linkRaw) {
-                const linkMatch = linkRaw.match(/^(PENDING|TRIGGERED|GONE)\s*[\u2014\-:]\s*([\s\S]*)$/i);
-                const linkStatus = linkMatch ? linkMatch[1].toUpperCase() : 'LINKED';
-                const linkText = linkMatch ? linkMatch[2] : linkRaw;
-                const linkColor = linkStatus === 'TRIGGERED' ? '#2ecc71' : (linkStatus === 'GONE' ? '#ef4444' : '#f5a623');
-                const linkTitle = linkStatus === 'PENDING' ? 'Previous analysis \u2014 still pending'
-                    : linkStatus === 'TRIGGERED' ? 'Previous analysis \u2014 conditions met'
-                    : linkStatus === 'GONE' ? 'Previous analysis \u2014 no longer valid'
-                    : 'Linked to your previous analysis';
+                const linkMatch = linkRaw.match(/^(LONG[\s_]*MET|SHORT[\s_]*MET|WAITING|INVALID|PENDING|GONE|TRIGGERED)(?:\s*[\u2014\-:]\s*[\s\S]*)?$/i);
+                let linkStatus = linkMatch ? linkMatch[1].toUpperCase().replace(/[\s_]+/g, ' ') : '';
+                if (linkStatus === 'PENDING') linkStatus = 'WAITING';
+                if (linkStatus === 'GONE') linkStatus = 'INVALID';
+                const linkCards = {
+                    'LONG MET':  { color: '#2ecc71', icon: '\u25B2', title: 'Long conditions met', sub: 'No selling' },
+                    'SHORT MET': { color: '#ef4444', icon: '\u25BC', title: 'Short conditions met', sub: 'No buying' },
+                    'WAITING':   { color: '#f5a623', icon: '\u23F3', title: 'Still waiting for the conditions to be fulfilled', sub: '' },
+                    'INVALID':   { color: '#8b93a7', icon: '\u2715', title: 'Setup invalid, looking for a new setup', sub: '' }
+                };
+                const card = linkCards[linkStatus] || { color: '#f5a623', icon: '\u21BB', title: 'Linked to your previous analysis', sub: '' };
                 linkCardHTML = `
-                <div class="report-card" style="border-left: 4px solid ${linkColor}">
-                    <h3>${linkTitle}</h3>
-                    <p style="margin:0;line-height:1.5">${escapeHtml(linkText)}</p>
+                <div class="report-card" style="border-left: 4px solid ${card.color}">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <span style="color:${card.color};font-size:1.15rem;line-height:1">${card.icon}</span>
+                        <h3 style="margin:0">${card.title}</h3>
+                        ${card.sub ? `<span style="margin-left:auto;padding:3px 10px;border-radius:999px;border:1px solid ${card.color};color:${card.color};font-size:0.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase">${card.sub}</span>` : ''}
+                    </div>
                 </div>`;
             }
 

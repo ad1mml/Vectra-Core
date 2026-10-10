@@ -696,27 +696,32 @@ STEP 1 — Identify the symbol from the NEW chart image (and its timeframe).
 STEP 2 — If it matches, compare what the NEW chart shows with the saved
          analysis (levels, zone, trigger conditions, invalidation, targets,
          how much time has passed) and classify the situation as exactly one
-         of these:
+         of these four:
 
-   A) STILL PENDING — the saved setup is still alive: price has not yet
-      reached the waiting zone / sweep / confirmation it asked for, and
-      nothing invalidated it. Continue the same plan: say what is still
-      missing and update the levels if the new chart sharpens them.
+   LONG MET — the saved BUY / long conditions are now fulfilled (price
+      reached the waiting zone and the confirmation it asked for, e.g. the
+      sweep / CHOCH / displacement, has formed). Conclude: confirm the long
+      and, if the Price-Grounding Protocol allows it, give the Buy with
+      entry, stop and target built from the NEW chart. Never output Sell.
 
-   B) CONDITIONS NOW MET — price reached the zone and the confirmation
-      the saved analysis was waiting for (for example the CHOCH / sweep /
-      displacement) has now formed. Conclude: confirm the setup and, if
-      the Price-Grounding Protocol allows it, give the Buy/Sell with
-      entry, stop and target built from the NEW chart.
+   SHORT MET — the saved SELL / short conditions are now fulfilled (same
+      logic on the sell side). Conclude: confirm the short and, if the
+      Price-Grounding Protocol allows it, give the Sell with entry, stop and
+      target built from the NEW chart. Never output Buy.
 
-   C) OPPORTUNITY GONE — the saved setup is no longer valid or usable:
-      its invalidation was broken, its target was already reached, price
-      ran away without a valid entry, the zone was swept without the
-      confirmation, or too much time passed for it to still matter.
-      Say so plainly in one sentence, then analyse the NEW chart as a
-      FRESH analysis. Do NOT keep defending or re-forcing the old idea.
+   WAITING — the saved setup is still alive: nothing has invalidated it, but
+      neither the long nor the short conditions are fulfilled yet. Continue
+      the same plan, put what is still missing in the buy/sell triggers, and update levels if the new
+      chart sharpens them. Decision stays Wait.
 
-STEP 3 — In every case (A, B and C) use the saved analysis as EVIDENCE about
+   INVALID — the saved setup is no longer valid or usable: its invalidation
+      was broken, its target was already reached, price ran away without a
+      valid entry, the zone was swept without the confirmation, or too much
+      time passed for it to still matter. Mark it INVALID, then analyse
+      the NEW chart as a FRESH analysis and look for a new
+      setup. Do NOT keep defending or re-forcing the old idea.
+
+STEP 3 — In every case use the saved analysis as EVIDENCE about
          price behaviour: how price moved since then, how it reacted at the
          old zone / liquidity pools, whether the old bias was respected or
          rejected, and what that tells you about who is in control. Combine
@@ -729,9 +734,9 @@ RULES
   levels. Never copy old prices into the new analysis as if they were current.
 - Never keep an old Buy/Sell/Wait just because the old analysis said it.
 - Fill the "previous_analysis_link" field of the output schema exactly as
-  that field's note describes: "" for a brand-new chart, otherwise
-  "PENDING — ...", "TRIGGERED — ..." or "GONE — ..." (one or two short
-  sentences). Keep every other field of the schema as specified; add no keys.
+  that field's note describes: "" for a brand-new chart, otherwise ONLY one
+  label: "LONG MET", "SHORT MET", "WAITING" or "INVALID" (no explanation).
+  Keep every other field of the schema as specified; add no keys.
 """
 
 
