@@ -1132,12 +1132,254 @@ def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay
     raise last_exc
 
 
+# ---------------------------------------------------------------------------
+# OpenRouter (primary AI) — Gemini stays as the automatic fallback.
+#
+# Order of attempts for every AI call:
+#   1. OpenRouter (free Qwen vision model) — if a key is set, it is enabled,
+#      and its free limit has not been reached.
+#   2. Gemini (GEMINI_MODEL, then GEMINI_FALLBACK_MODEL) — exactly as before.
+# When OpenRouter answers 429 (rate limit / daily limit) we remember when it
+# resets and send everything straight to Gemini until then, so no requests
+# are wasted. If OPENROUTER_API_KEY is missing, this whole block is skipped
+# and the app behaves exactly like before.
+# ---------------------------------------------------------------------------
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "qwen/qwen3.8-27b:free").strip()
+OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY) and os.environ.get("OPENROUTER_ENABLED", "true").strip().lower() == "true"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Free OpenRouter accounts get 50 requests/day (1000 after buying $10 credits).
+OPENROUTER_DAILY_LIMIT = int(os.environ.get("OPENROUTER_DAILY_LIMIT", "50"))
+OPENROUTER_TIMEOUT_SECONDS = float(os.environ.get("OPENROUTER_TIMEOUT_SECONDS", "40"))
+OPENROUTER_MAX_TOKENS = int(os.environ.get("OPENROUTER_MAX_TOKENS", "6000"))
+# "low" | "medium" | "high" | "off" — how much the Qwen model thinks first.
+OPENROUTER_REASONING_EFFORT = os.environ.get("OPENROUTER_REASONING_EFFORT", "low").strip().lower()
+# Turn on only if the chosen model supports OpenAI-style JSON mode.
+OPENROUTER_JSON_MODE = os.environ.get("OPENROUTER_JSON_MODE", "false").strip().lower() == "true"
+OPENROUTER_FAILURE_COOLDOWN_SECONDS = float(os.environ.get("OPENROUTER_FAILURE_COOLDOWN_SECONDS", "30"))
+
+_openrouter_lock = threading.Lock()
+_openrouter_state = {"day": None, "count": 0, "blocked_until": 0.0, "last_error": None}
+
+
+class _OpenRouterLimitError(Exception):
+    """OpenRouter said 429 — rate limit or daily free limit reached."""
+
+
+class _OpenRouterResponse:
+    """Tiny stand-in for the Gemini response object: the rest of the app
+    only ever reads `.text` from it."""
+    def __init__(self, text, model):
+        self.text = text
+        self.model = model
+
+
+def _openrouter_available() -> bool:
+    if not OPENROUTER_ENABLED:
+        return False
+    with _openrouter_lock:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        if _openrouter_state["day"] != today:
+            _openrouter_state["day"] = today
+            _openrouter_state["count"] = 0
+        if time.time() < _openrouter_state["blocked_until"]:
+            return False
+        if _openrouter_state["count"] >= OPENROUTER_DAILY_LIMIT:
+            return False
+        return True
+
+
+def _openrouter_block_until(until_ts, reason):
+    with _openrouter_lock:
+        _openrouter_state["blocked_until"] = max(_openrouter_state["blocked_until"], until_ts)
+        _openrouter_state["last_error"] = reason
+
+
+def _openrouter_block_after_limit(message, headers=None):
+    """Work out when OpenRouter's limit resets and pause it until then."""
+    now = time.time()
+    until = None
+    try:
+        raw = (headers or {}).get("X-RateLimit-Reset")
+        if raw is not None:
+            val = float(raw)
+            if val > 1e11:          # milliseconds -> seconds
+                val /= 1000.0
+            if val > now:
+                until = val
+    except Exception:
+        until = None
+    if until is None:
+        msg = (message or "").lower()
+        if "per-day" in msg or "per day" in msg or "daily" in msg:
+            nxt = (datetime.utcnow() + timedelta(days=1)).replace(hour=0, minute=0, second=5, microsecond=0)
+            until = now + (nxt - datetime.utcnow()).total_seconds()
+        else:
+            until = now + 60
+    until = min(until, now + 26 * 3600)
+    _openrouter_block_until(until, "limit: " + (message or "")[:120])
+    return until
+
+
+def _openrouter_messages(contents):
+    """Turn the Gemini-style `contents` list (text, PIL images, Gemini
+    Parts holding image bytes) into one OpenAI-style user message."""
+    if isinstance(contents, (str, bytes)) or not hasattr(contents, "__iter__"):
+        contents = [contents]
+    parts = []
+    for item in contents:
+        if isinstance(item, str):
+            parts.append({"type": "text", "text": item})
+        elif isinstance(item, Image.Image):
+            buf = io.BytesIO()
+            item.convert("RGB").save(buf, format="JPEG", quality=90)
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            parts.append({"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}})
+        else:
+            inline = getattr(item, "inline_data", None)
+            data = getattr(inline, "data", None) if inline is not None else None
+            if data:
+                mime = getattr(inline, "mime_type", None) or "image/png"
+                b64 = base64.b64encode(data).decode()
+                parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+            else:
+                txt = getattr(item, "text", None)
+                parts.append({"type": "text", "text": txt if txt else str(item)})
+    return [{"role": "user", "content": parts}]
+
+
+def _openrouter_clean_text(text, wants_json):
+    text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL | re.IGNORECASE).strip()
+    if wants_json:
+        s = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
+        s = re.sub(r"```$", "", s).strip()
+        i, j = s.find("{"), s.rfind("}")
+        if i != -1 and j > i:
+            cand = s[i:j + 1]
+            try:
+                json.loads(cand)
+                return cand
+            except Exception:
+                pass
+        if i > 0:
+            return s[i:]
+        return s
+    return text
+
+
+def _call_openrouter(contents, config=None):
+    """One OpenRouter request. Returns an object with `.text`. Raises
+    _OpenRouterLimitError on 429 and a normal Exception on anything else."""
+    wants_json = getattr(config, "response_mime_type", None) == "application/json"
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": _openrouter_messages(contents),
+        "max_tokens": OPENROUTER_MAX_TOKENS,
+    }
+    temperature = getattr(config, "temperature", None)
+    top_p = getattr(config, "top_p", None)
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if top_p is not None:
+        payload["top_p"] = top_p
+    if wants_json and OPENROUTER_JSON_MODE:
+        payload["response_format"] = {"type": "json_object"}
+    if OPENROUTER_REASONING_EFFORT == "off":
+        payload["reasoning"] = {"enabled": False}
+    elif OPENROUTER_REASONING_EFFORT in ("minimal", "low", "medium", "high"):
+        payload["reasoning"] = {"effort": OPENROUTER_REASONING_EFFORT, "exclude": True}
+
+    headers = {
+        "Authorization": "Bearer " + OPENROUTER_API_KEY,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://vectracore.app",
+        "X-Title": "Vectra Core",
+    }
+
+    with _openrouter_lock:
+        _openrouter_state["count"] += 1   # failed requests can count too
+    start = time.perf_counter()
+    try:
+        resp = requests.post(OPENROUTER_URL, headers=headers, json=payload,
+                             timeout=(10, OPENROUTER_TIMEOUT_SECONDS))
+    except requests.exceptions.RequestException as e:
+        _openrouter_block_until(time.time() + OPENROUTER_FAILURE_COOLDOWN_SECONDS, "network: " + str(e)[:120])
+        raise
+
+    try:
+        data = resp.json()
+    except Exception:
+        data = {}
+    err = data.get("error") if isinstance(data, dict) else None
+    err_msg = ""
+    err_headers = dict(resp.headers)
+    if isinstance(err, dict):
+        err_msg = str(err.get("message") or "")[:300]
+        meta_headers = (err.get("metadata") or {}).get("headers") or {}
+        if isinstance(meta_headers, dict):
+            err_headers.update(meta_headers)
+
+    status = resp.status_code
+    inner_code = err.get("code") if isinstance(err, dict) else None
+    if status == 429 or inner_code == 429:
+        until = _openrouter_block_after_limit(err_msg or resp.text, err_headers)
+        raise _OpenRouterLimitError(
+            f"OpenRouter limit reached ({err_msg[:100]}) — using Gemini for ~{int(until - time.time())}s"
+        )
+    if status in (401, 402, 403):
+        _openrouter_block_until(time.time() + 900, f"auth/credits HTTP {status}")
+        raise RuntimeError(f"OpenRouter HTTP {status}: {err_msg or resp.text[:200]}")
+    if status >= 400 or err:
+        _openrouter_block_until(time.time() + OPENROUTER_FAILURE_COOLDOWN_SECONDS, f"HTTP {status}")
+        raise RuntimeError(f"OpenRouter HTTP {status}: {err_msg or resp.text[:200]}")
+
+    try:
+        content = data["choices"][0]["message"].get("content")
+    except Exception:
+        content = None
+    if isinstance(content, list):
+        content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+    text = _openrouter_clean_text(content or "", wants_json)
+    if not text:
+        _openrouter_block_until(time.time() + OPENROUTER_FAILURE_COOLDOWN_SECONDS, "empty response")
+        raise RuntimeError("OpenRouter returned an empty answer.")
+
+    app.logger.info("AI served by OpenRouter | model=%s | %.2fs | used today=%d/%d",
+                    OPENROUTER_MODEL, time.perf_counter() - start,
+                    _openrouter_state["count"], OPENROUTER_DAILY_LIMIT)
+    return _OpenRouterResponse(text, OPENROUTER_MODEL)
+
+
+def _try_openrouter_first(contents, config=None):
+    """Returns an OpenRouter response, or None if Gemini should handle it."""
+    if not _openrouter_available():
+        return None
+    try:
+        return _call_openrouter(contents, config)
+    except _OpenRouterLimitError as e:
+        app.logger.warning("%s", e)
+    except Exception as e:
+        app.logger.warning("OpenRouter failed (%s) — switching to Gemini: %s",
+                           type(e).__name__, str(e)[:200])
+    return None
+
+
+def _effective_deadline(deadline):
+    """Give the hard deadline extra room when OpenRouter goes first, so a
+    slow OpenRouter attempt still leaves Gemini time to answer."""
+    return deadline + (OPENROUTER_TIMEOUT_SECONDS if _openrouter_available() else 0)
+
+
 def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SECONDS):
     """Primary model with fallback, under the same hard wall-clock deadline
     as _analyze_generate — see that function's docstring for why this is
     enforced with a future/thread rather than trusting the SDK's own
     timeout."""
     def _do_call():
+        # OpenRouter first; Gemini below only runs if it is skipped/failed.
+        or_response = _try_openrouter_first(contents, config)
+        if or_response is not None:
+            return or_response
         try:
             gemini_contents = _make_gemini_contents(contents)
             # max_retries=2: one real retry (with backoff) on a transient
@@ -1163,9 +1405,10 @@ def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SE
                 max_retries=2
             )
 
+    _wait_budget = _effective_deadline(deadline)
     future = _analyze_executor.submit(_do_call)
     try:
-        return future.result(timeout=deadline)
+        return future.result(timeout=_wait_budget)
     except FutureTimeoutError:
         app.logger.error(
             "market_sentiment: exceeded hard deadline of %.1fs — returning to "
@@ -1201,6 +1444,10 @@ def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECON
     nothing logged.
     """
     def _do_call():
+        # OpenRouter first; Gemini below only runs if it is skipped/failed.
+        or_response = _try_openrouter_first(contents, config)
+        if or_response is not None:
+            return or_response
         try:
             # max_retries=2: one real retry (with backoff) before falling
             # over to the fallback model — a bare 503 "high demand" is
@@ -1221,9 +1468,10 @@ def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECON
                 max_retries=2
             )
 
+    _wait_budget = _effective_deadline(deadline)
     future = _analyze_executor.submit(_do_call)
     try:
-        return future.result(timeout=deadline)
+        return future.result(timeout=_wait_budget)
     except FutureTimeoutError:
         app.logger.error(
             "analyze_chart: %s exceeded hard deadline of %.1fs — returning to "
@@ -2721,6 +2969,26 @@ def test_gemini():
             "success": False,
             "error": "Diagnostic request failed."
         }), 500
+
+@app.route("/test-openrouter", methods=["GET"])
+def test_openrouter():
+    """Admin-only check that the OpenRouter key/model work. Uses 1 request."""
+    if os.environ.get("EXPOSE_DIAGNOSTICS", "false").lower() != "true" and not _admin_authorized():
+        return jsonify({"error": "Not available."}), 404
+    if not OPENROUTER_ENABLED:
+        return jsonify({"success": False, "error": "OpenRouter is not enabled (OPENROUTER_API_KEY missing or OPENROUTER_ENABLED=false)."}), 200
+    with _openrouter_lock:
+        status = dict(_openrouter_state)
+    try:
+        response = _call_openrouter(
+            ["Reply with exactly this JSON and nothing else: {\"status\":\"ok\"}"],
+            types.GenerateContentConfig(response_mime_type="application/json", temperature=0),
+        )
+        return jsonify({"success": True, "model": response.model, "text": response.text})
+    except Exception as e:
+        app.logger.exception("OpenRouter diagnostic failed")
+        return jsonify({"success": False, "error": str(e)[:300], "state": {
+            "used_today": status.get("count"), "blocked_until": status.get("blocked_until")}}), 200
 
 @app.route("/test-twelvedata", methods=["GET"])
 def test_twelvedata():

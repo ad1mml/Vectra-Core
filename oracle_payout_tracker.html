@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oracle Payout Tracker — $10K</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0e13;--panel:#121720;--panel2:#171e29;--line:#293242;--text:#edf2f8;--muted:#9aa8ba;--accent:#8b9cff;--accent2:#b5c0ff;--green:#65d6a3;--red:#ff7d8b;--amber:#f5c76a;--radius:16px}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#17203a 0,transparent 38%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:1240px;margin:auto;padding:26px 18px 56px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}.brand{display:flex;gap:12px;align-items:center}.mark{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(145deg,#a5b0ff,#6779ed);color:#101525;font-weight:900;font-size:18px}.eyebrow{color:var(--accent2);text-transform:uppercase;letter-spacing:.14em;font-size:10px;font-weight:800}.top h1{font-size:23px;line-height:1.2;margin:3px 0 0}.tag{border:1px solid var(--line);border-radius:999px;padding:7px 11px;color:var(--muted);font-size:12px;white-space:nowrap}
+.grid{display:grid;gap:14px}.stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:14px}.card{background:linear-gradient(180deg,rgba(22,29,41,.96),rgba(16,21,30,.98));border:1px solid var(--line);border-radius:var(--radius);padding:18px;min-width:0;box-shadow:0 10px 30px #00000012}.stat-label{font-size:12px;color:var(--muted);margin-bottom:7px}.stat-value{font-size:clamp(21px,2.5vw,29px);font-weight:750;letter-spacing:-.04em;line-height:1.15;overflow-wrap:anywhere}.stat-sub{color:var(--muted);font-size:11px;margin-top:8px}.green{color:var(--green)}.red{color:var(--red)}.amber{color:var(--amber)}.accent{color:var(--accent2)}
+.progress{height:8px;background:#283143;border-radius:99px;overflow:hidden;margin-top:13px}.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#6f81f4,#8ee3bd);border-radius:99px;transition:width .2s}
+.layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:14px;align-items:start}.stack{display:grid;gap:14px}.section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px}.section-head h2{font-size:16px;margin:0 0 3px}.section-head p{color:var(--muted);font-size:12px;margin:0}.pill{font-size:11px;color:var(--accent2);border:1px solid #414d70;background:#222b44;padding:4px 8px;border-radius:99px;white-space:nowrap}
+label{display:block;color:var(--muted);font-size:12px;margin:0 0 6px}input,select,textarea{width:100%;background:#0d121a;border:1px solid #303a4b;color:var(--text);padding:10px 11px;border-radius:10px;outline:none;font:inherit;min-width:0}input:focus,select:focus,textarea:focus{border-color:#8795ff;box-shadow:0 0 0 3px #8795ff1b}input[readonly]{color:var(--accent2);background:#111827}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.fields.three{grid-template-columns:repeat(3,minmax(0,1fr))}.field{min-width:0}.full{grid-column:1/-1}
+.btn{border:1px solid var(--line);border-radius:10px;padding:10px 13px;background:#202839;color:var(--text);font:inherit;font-weight:700;cursor:pointer;transition:.15s}.btn:hover{filter:brightness(1.12);transform:translateY(-1px)}.btn.primary{background:linear-gradient(135deg,#9aa7ff,#7182f0);border-color:transparent;color:#101525}.btn.ghost{background:transparent}.btn.danger{color:var(--red)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.helper{font-size:11px;color:var(--muted);margin-top:7px}.result{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.result-box{background:#0d121a;border:1px solid var(--line);padding:13px;border-radius:12px}.result-box .k{font-size:11px;color:var(--muted)}.result-box .v{font-size:22px;font-weight:800;margin-top:3px;overflow-wrap:anywhere}.note{border-left:3px solid var(--amber);padding:9px 11px;background:#f5c76a0d;border-radius:0 8px 8px 0;color:#d8c9a7;font-size:12px;margin-top:12px}
+.checks{display:grid;gap:9px}.check{display:flex;gap:10px;align-items:flex-start;background:#0d121a;border:1px solid #252f3e;padding:10px;border-radius:10px;cursor:pointer}.check input{width:16px;height:16px;margin:2px 0 0;accent-color:#91a0ff;flex:0 0 auto}.check span{font-size:12px}.check small{display:block;color:var(--muted);margin-top:2px;font-size:11px}.checklist-status{font-size:11px;color:var(--muted)}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}table{border-collapse:collapse;width:100%;min-width:590px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid #252f3d;font-size:12px;white-space:nowrap}th{color:var(--muted);font-weight:650;background:#0e131b}tbody tr:last-child td{border-bottom:0}.empty{text-align:center;color:var(--muted);padding:24px 10px;white-space:normal}
+.day-row{display:grid;grid-template-columns:1fr 105px 95px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #252f3d}.day-row:last-child{border:0}.day-date{font-weight:700}.day-meta{color:var(--muted);font-size:11px}.day-pnl{text-align:right;font-weight:750}.small-input{padding:7px 8px;font-size:12px}.footer{color:var(--muted);font-size:11px;text-align:center;margin-top:20px}.warnbox{border:1px solid #655532;background:#3b30181f;color:#e6d5a7;border-radius:12px;padding:12px 14px;font-size:12px;margin-bottom:14px}
+@media(max-width:900px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.layout{grid-template-columns:1fr}}
+@media(max-width:520px){.wrap{padding:16px 11px 40px}.top{align-items:flex-start;flex-direction:column}.top h1{font-size:21px}.tag{white-space:normal}.card{padding:14px}.fields.three{grid-template-columns:1fr 1fr}.fields.three .field:last-child{grid-column:1/-1}.stats{gap:9px}.stat-value{font-size:22px}.day-row{grid-template-columns:1fr 84px 82px;gap:6px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="brand"><div class="mark">O</div><div><div class="eyebrow">Personal trading journal</div><h1>Oracle Payout Tracker</h1></div></div>
+  <div class="tag">10K account · Fixed risk calculator: <strong>$20 per trade</strong> · Saves in this browser</div>
+</header>
+
+<div class="warnbox"><strong>Local-only journal:</strong> your entries are saved in this browser on this device. Export a backup regularly. This page does not connect to MT5 or Upcomers and cannot verify live drawdown or payout eligibility.</div>
+
+<section class="grid stats">
+  <div class="card"><div class="stat-label">Current tracked balance</div><div class="stat-value" id="balance">$9,979.65</div><div class="stat-sub">Starting balance $10,000 + recorded P&amp;L</div></div>
+  <div class="card"><div class="stat-label">Progress to $10,451 target</div><div class="stat-value accent" id="progressAmount">$0.00</div><div class="progress"><span id="progressBar"></span></div><div class="stat-sub" id="remaining">$471.35 still needed</div></div>
+  <div class="card"><div class="stat-label">Buffer above reported floor</div><div class="stat-value" id="buffer">$350.98</div><div class="stat-sub">Reported floor: $9,628.67 · update manually if it trails</div></div>
+  <div class="card"><div class="stat-label">Estimated consistency</div><div class="stat-value" id="consistency">N/A</div><div class="stat-sub" id="consistencySub">Best day / total net profit · estimate only</div></div>
+</section>
+
+<div class="layout">
+<main class="stack">
+  <section class="card">
+    <div class="section-head"><div><h2>01 / Lot-size calculator</h2><p>Risk is locked at $20. Enter the symbol's MT5 tick specifications for accurate sizing.</p></div><span class="pill">FIXED $20 RISK</span></div>
+    <div class="fields">
+      <div class="field"><label for="asset">Asset / symbol</label><input id="asset" placeholder="e.g. XAUUSD, EURUSD, US30" value="XAUUSD"></div>
+      <div class="field"><label for="entry">Entry price</label><input id="entry" type="number" step="any" placeholder="e.g. 4177.10"></div>
+      <div class="field"><label for="stop">Stop-loss price</label><input id="stop" type="number" step="any" placeholder="e.g. 4166.78"></div>
+      <div class="field"><label for="tickSize">Tick size (MT5 Specification)</label><input id="tickSize" inputmode="decimal" placeholder="e.g. 0.01"></div>
+      <div class="field"><label for="tickValue">Tick value per 1.00 lot ($)</label><input id="tickValue" inputmode="decimal" placeholder="From MT5 Specification"></div>
+      <div class="field"><label for="rr">Target risk-to-reward</label><select id="rr"><option value="2.3">2.3R</option><option value="2.4">2.4R</option><option value="2.5" selected>2.5R</option><option value="2.6">2.6R</option><option value="2.7">2.7R</option></select></div>
+      <div class="field"><label>Risk budget</label><input value="$20.00 (fixed)" readonly></div>
+    </div>
+    <div class="actions"><button class="btn primary" id="calcBtn">Calculate position size</button><button class="btn ghost" id="clearCalc">Clear inputs</button></div>
+    <div class="result">
+      <div class="result-box"><div class="k">Calculated lot size (rounded down)</div><div class="v accent" id="lots">—</div></div>
+      <div class="result-box"><div class="k">Possible targets at selected R:R</div><div class="v" id="targetPrice">—</div></div>
+      <div class="result-box"><div class="k">Stop distance</div><div class="v" id="stopDistance">—</div></div>
+      <div class="result-box"><div class="k">Estimated risk at lot size</div><div class="v" id="riskActual">—</div></div>
+    </div>
+    <div class="helper" id="calcMessage">Formula: lots = $20 ÷ ((stop distance ÷ tick size) × tick value). Lot size is rounded down to 0.01 lots by default.</div>
+    <div class="note">MT5 tick value differs by broker and instrument. Open Market Watch → right-click the symbol → Specification. Enter tick size, tick value for 1 lot, and verify volume step/minimum with your broker. If the symbol's profit currency is not USD, confirm the converted tick value. This calculator is only as accurate as those specifications.</div>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><div><h2>02 / Before-trade checklist</h2><p>Complete every check before placing a trade.</p></div><span class="checklist-status" id="checkStatus">0 / 8 checked</span></div>
+    <div class="checks" id="checklist">
+      <label class="check"><input type="checkbox"><span><strong>Setup matches my strategy</strong><small>No impulsive entries or FOMO trades.</small></span></label>
+      <label class="check"><input type="checkbox"><span><strong>News and session checked</strong><small>Know whether major news or low-liquidity conditions affect this trade.</small></span></label>
+      <label class="check"><input type="checkbox"><span><strong>Entry and stop loss are defined</strong><small>Stop is at a valid technical invalidation level.</small></span></label>
+      <label class="check"><input type="checkbox"><span><strong>Position size risks no more than $20</strong><small>Use the calculator and correct broker tick specifications.</small></span></label>
+      <label class="check"><input type="checkbox"><span><strong>Target fits my 2.3R–2.7R plan</strong><small>Do not move the stop farther away to avoid a loss.</small></span></label>
+      <label class="check"><input type="checkbox"><span><strong>Account floor and daily limit checked</strong><small>Check live MT5/prop dashboard; the floor may trail.</small></span></label>
+      <label class="check"><input type="checkbox"><span><strong>Daily loss limit not reached</strong><small>Personal limit: stop for the day at −$40 realized, and account for open risk.</small></span></label>
+      <label class="check"><input type="checkbox"><span><strong>I accept the full planned loss</strong><small>No revenge trading, no increasing risk to recover losses.</small></span></label>
+    </div>
+    <div class="actions"><button class="btn ghost" id="resetChecks">Reset checklist</button><span class="helper" id="tradeGate">Checklist completion is a reminder, not a guarantee of a valid trade.</span></div>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><div><h2>03 / Log a closed trade</h2><p>Record realized P&amp;L after the trade closes, including costs.</p></div></div>
+    <div class="fields three">
+      <div class="field"><label for="tradeDate">Trade date</label><input id="tradeDate" type="date"></div>
+      <div class="field"><label for="tradeAsset">Asset</label><input id="tradeAsset" placeholder="e.g. XAUUSD"></div>
+      <div class="field"><label for="tradeLots">Lot size</label><input id="tradeLots" type="number" min="0" step="any" placeholder="e.g. 0.05"></div>
+      <div class="field"><label for="tradeEntry">Entry</label><input id="tradeEntry" type="number" step="any" placeholder="Entry price"></div>
+      <div class="field"><label for="tradeStop">Stop loss</label><input id="tradeStop" type="number" step="any" placeholder="Stop price"></div>
+      <div class="field"><label for="tradePnl">Closed net P&amp;L ($)</label><input id="tradePnl" type="number" step="0.01" placeholder="e.g. 50 or -20"></div>
+      <div class="field full"><label for="tradeNotes">Notes / setup grade</label><input id="tradeNotes" placeholder="e.g. A setup, London session, followed plan"></div>
+    </div>
+    <div class="actions"><button class="btn primary" id="addTrade">Save closed trade</button><button class="btn ghost" id="fillFromCalc">Copy calculator details</button></div>
+    <div class="helper">Please log only closed P&amp;L. A trade's planned $20 risk is not necessarily its realized result.</div>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><div><h2>04 / Trade journal</h2><p>Newest entries appear first. Remove an entry if you recorded it incorrectly.</p></div><div class="actions"><button class="btn ghost" id="exportCsv">Export CSV</button><button class="btn ghost" id="backupJson">Backup JSON</button><button class="btn danger" id="resetAll">Reset data</button></div></div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Asset</th><th>Lots</th><th>Entry / SL</th><th>Net P&amp;L</th><th>Notes</th><th></th></tr></thead><tbody id="tradeRows"><tr><td colspan="7" class="empty">No new trades logged yet.</td></tr></tbody></table></div>
+  </section>
+</main>
+
+<aside class="stack">
+  <section class="card">
+    <div class="section-head"><div><h2>05 / Daily P&amp;L tracker</h2><p>Includes your reported historical days. Add future daily adjustments only if you are not logging those trades individually.</p></div></div>
+    <div class="fields">
+      <div class="field"><label for="dailyDate">Date</label><input id="dailyDate" type="date"></div>
+      <div class="field"><label for="dailyPnl">Daily net P&amp;L ($)</label><input id="dailyPnl" type="number" step="0.01" placeholder="e.g. 50 or -40"></div>
+      <div class="field full"><label for="dailyNote">Note</label><input id="dailyNote" placeholder="e.g. historical result or correction"></div>
+    </div>
+    <div class="actions"><button class="btn primary" id="saveDay">Save daily P&amp;L</button></div>
+    <div class="helper">Avoid double-counting: if you log trades for a date, don't also add the same result as a daily adjustment.</div>
+    <div style="margin-top:14px" id="dayList"></div>
+  </section>
+
+</aside>
+</div>
+<div class="footer">Local browser tool only · No broker connection · No trade execution · Always verify contract specs and prop-firm rules independently.</div>
+</div>
+<script>
+(() => {
+const KEY='oraclePayoutTracker_v1';
+const $=id=>document.getElementById(id);
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+const initialState=()=>({
+ settings:{initialBalance:10000,baselinePnl:-20.35,targetBalance:10451,floor:9628.67,bestDay:90.20,lotStep:0.01},
+ trades:[],
+ days:[
+  {date:'2026-10-08',pnl:90.20,note:'Historical result supplied by user (included in baseline; reference only)',historical:true},
+  {date:'2026-10-09',pnl:-110.55,note:'Historical result supplied by user (included in baseline; reference only)',historical:true}
+ ],
+ checklist:Array(8).fill(false), milestones:{}
+});
+let state;
+try{state=JSON.parse(localStorage.getItem(KEY))||initialState()}catch(e){state=initialState()}
+function persist(){localStorage.setItem(KEY,JSON.stringify(state));render()}
+function money(n){return (n<0?'−':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function parseField(id){const raw=$(id).value.trim().replace(/,/g,'');if(raw==='')return NaN;return Number(raw)}
+function num(id){const n=parseField(id);return Number.isFinite(n)?n:0}
+function validNum(id){return $(id).value.trim()!==''&&Number.isFinite(parseField(id))}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function pnlByDate(){
+ const m={};
+ // Trades are actual logged results.
+ state.trades.forEach(t=>{m[t.date]=(m[t.date]||0)+Number(t.pnl||0)});
+ // Only manual, non-historical daily adjustments count toward journal P&L.
+ state.days.filter(d=>!d.historical).forEach(d=>{m[d.date]=(m[d.date]||0)+Number(d.pnl||0)});
+ return m;
+}
+function totals(){
+ const recorded=state.trades.reduce((s,t)=>s+Number(t.pnl||0),0)+state.days.filter(d=>!d.historical).reduce((s,d)=>s+Number(d.pnl||0),0);
+ const totalNet=Number(state.settings.baselinePnl||0)+recorded;
+ const daily=pnlByDate();
+ const best=Math.max(Number(state.settings.bestDay||0),...Object.values(daily).filter(v=>v>0),0);
+ const balance=Number(state.settings.initialBalance||10000)+totalNet;
+ const target=Number(state.settings.targetBalance||10451);
+ return {recorded,totalNet,daily,best,balance,target,progress:balance-(Number(state.settings.initialBalance||10000)),remaining:Math.max(0,target-balance),floor:Number(state.settings.floor||9628.67),buffer:balance-Number(state.settings.floor||9628.67),consistency:totalNet>0?best/totalNet*100:null};
+}
+function render(){
+ const t=totals();
+ $('balance').textContent=money(t.balance);
+ $('progressAmount').textContent=money(t.progress);
+ const goalProfit=t.target-Number(state.settings.initialBalance||10000);
+ const pct=goalProfit>0?Math.max(0,Math.min(100,t.progress/goalProfit*100)):100;
+ $('progressBar').style.width=pct+'%';
+ $('remaining').textContent=t.remaining>0?money(t.remaining)+' still needed': 'Balance target reached — verify payout conditions';
+ $('buffer').textContent=money(t.buffer);
+ $('buffer').className='stat-value '+(t.buffer<100?'red':t.buffer<200?'amber':'');
+ $('consistency').textContent=t.consistency===null?'N/A':t.consistency.toFixed(1)+'%';
+ $('consistency').className='stat-value '+(t.consistency!==null&&t.consistency<=20?'green':t.consistency!==null?'amber':'');
+ $('consistencySub').textContent=t.consistency===null?'Net P&L is not positive; ratio not meaningful':'Best day '+money(t.best)+' / net profit '+money(t.totalNet);
+ renderTrades();renderDays();renderChecks();
+}
+function renderTrades(){
+ const tbody=$('tradeRows');
+ if(!state.trades.length){tbody.innerHTML='<tr><td colspan="7" class="empty">No new trades logged yet.</td></tr>';return}
+ tbody.innerHTML=[...state.trades].reverse().map(t=>`<tr><td>${esc(t.date)}</td><td>${esc(t.asset)}</td><td>${esc(t.lots||'—')}</td><td>${esc(t.entry||'—')} / ${esc(t.stop||'—')}</td><td class="${t.pnl>=0?'green':'red'}">${money(Number(t.pnl))}</td><td>${esc(t.notes||'—')}</td><td><button class="btn ghost" data-delete-trade="${esc(t.id)}" style="padding:5px 8px">Delete</button></td></tr>`).join('');
+ tbody.querySelectorAll('[data-delete-trade]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Delete this trade entry?')){state.trades=state.trades.filter(t=>t.id!==b.dataset.deleteTrade);persist()}}));
+}
+function renderDays(){
+ const el=$('dayList'), days=[...state.days].sort((a,b)=>b.date.localeCompare(a.date));
+ const map=pnlByDate();
+ const allDates=[...new Set([...days.map(d=>d.date),...Object.keys(map)])].sort((a,b)=>b.localeCompare(a));
+ if(!allDates.length){el.innerHTML='<div class="empty">No daily results yet.</div>';return}
+ el.innerHTML=allDates.map(date=>{
+  const entry=days.find(d=>d.date===date&&!d.historical);
+  const hist=days.find(d=>d.date===date&&d.historical);
+  const val=hist?hist.pnl:(map[date]||0);
+  const label=hist?'Historical reference':entry?entry.note||'Manual daily adjustment':'Calculated from trade journal';
+  return `<div class="day-row"><div><div class="day-date">${esc(date)}</div><div class="day-meta">${esc(label)}</div></div><div class="day-pnl ${val>=0?'green':'red'}">${val>=0?'+':''}${money(val)}</div><div style="text-align:right">${entry?`<button class="btn ghost" data-delete-day="${esc(date)}" style="padding:5px 7px">Delete</button>`:hist?'<span class="pill">History</span>':'<span class="pill">Trades</span>'}</div></div>`;
+ }).join('');
+ el.querySelectorAll('[data-delete-day]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Delete this manual daily adjustment?')){state.days=state.days.filter(d=>!(d.date===b.dataset.deleteDay&&!d.historical));persist()}}));
+}
+function renderChecks(){
+ const checks=[...$('checklist').querySelectorAll('input[type=checkbox]')];
+ checks.forEach((c,i)=>c.checked=!!state.checklist[i]);
+ const n=state.checklist.filter(Boolean).length;$('checkStatus').textContent=`${n} / ${checks.length} checked`;
+}
+function loadSettings(){ /* Settings panel intentionally removed; retain stored/default account baseline. */
+}
+function calculate(){
+ const entry=num('entry'),stop=num('stop'),tickSize=num('tickSize'),tickValue=num('tickValue'),rr=num('rr'),step=0.01;
+ if(!validNum('entry')||!validNum('stop')||entry<=0||stop<=0){
+  $('lots').textContent='—';$('targetPrice').textContent='—';$('stopDistance').textContent='—';$('riskActual').textContent='—';
+  $('calcMessage').textContent='Enter a valid entry price and stop-loss price first.';return;
+ }
+ if(!validNum('tickSize')||!validNum('tickValue')||tickSize<=0||tickValue<=0){
+  $('lots').textContent='—';$('targetPrice').textContent='—';$('stopDistance').textContent='—';$('riskActual').textContent='—';
+  $('calcMessage').textContent='Missing broker specifications: open MT5 Market Watch → right-click this exact symbol → Specification, then enter Tick size and Tick value for 1 lot. Entry and stop-loss alone are not enough to calculate a safe lot size for every CFD/forex asset.';return;
+ }
+ const distance=Math.abs(entry-stop);
+ if(distance===0){$('lots').textContent='—';$('targetPrice').textContent='—';$('stopDistance').textContent='—';$('riskActual').textContent='—';$('calcMessage').textContent='Entry and stop loss must be different.';return}
+ const rawRiskPerLot=(distance/tickSize)*tickValue;
+ const rawLots=20/rawRiskPerLot;
+ const lots=Math.floor((rawLots+1e-10)/step)*step;
+ const decimals=Math.max(0,Math.min(6,(String(step).split('.')[1]||'').length));
+ const actualRisk=lots*rawRiskPerLot;
+ const buyTarget=entry+distance*rr;
+ const sellTarget=entry-distance*rr;
+ $('lots').textContent=lots>0?lots.toFixed(decimals)+' lots':'Below minimum step';
+ $('targetPrice').textContent=`Buy: ${buyTarget.toLocaleString('en-US',{maximumFractionDigits:8})} / Sell: ${sellTarget.toLocaleString('en-US',{maximumFractionDigits:8})}`;
+ $('stopDistance').textContent=distance.toLocaleString('en-US',{maximumFractionDigits:8});
+ $('riskActual').textContent=money(actualRisk);
+ $('calcMessage').textContent=lots>0?`Calculated using $${rawRiskPerLot.toFixed(2)} risk per 1.00 lot. Rounded down to ${step} lot increments; estimated risk is ${money(actualRisk)} before costs.`:'$20 risk is smaller than the minimum volume at these symbol specifications. Do not round up if that would exceed the risk budget.';
+}
+$('calcBtn').addEventListener('click',calculate);
+$('clearCalc').addEventListener('click',()=>{['entry','stop','tickSize','tickValue'].forEach(id=>$(id).value='');$('lots').textContent='—';$('targetPrice').textContent='—';$('stopDistance').textContent='—';$('riskActual').textContent='—';$('calcMessage').textContent='Formula: lots = $20 ÷ ((stop distance ÷ tick size) × tick value). Lot size is rounded down to the selected lot step.'});
+$('asset').addEventListener('change',()=>{if(!$('tradeAsset').value)$('tradeAsset').value=$('asset').value});
+$('resetChecks').addEventListener('click',()=>{state.checklist=Array(8).fill(false);persist()});
+[...$('checklist').querySelectorAll('input[type=checkbox]')].forEach((c,i)=>c.addEventListener('change',()=>{state.checklist[i]=c.checked;persist()}));
+$('tradeDate').value=today();$('dailyDate').value=today();
+$('fillFromCalc').addEventListener('click',()=>{$('tradeAsset').value=$('asset').value;$('tradeLots').value=$('lots').textContent.replace(' lots','');$('tradeEntry').value=$('entry').value;$('tradeStop').value=$('stop').value});
+$('addTrade').addEventListener('click',()=>{
+ if(!$('tradeDate').value||!$('tradeAsset').value.trim()||!validNum('tradePnl')){alert('Please enter the date, asset and closed net P&L.');return}
+ const t={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),date:$('tradeDate').value,asset:$('tradeAsset').value.trim(),lots:$('tradeLots').value,entry:$('tradeEntry').value,stop:$('tradeStop').value,pnl:Number($('tradePnl').value),notes:$('tradeNotes').value.trim()};
+ state.trades.push(t);['tradeLots','tradeEntry','tradeStop','tradePnl','tradeNotes'].forEach(id=>$(id).value='');persist();
+});
+$('saveDay').addEventListener('click',()=>{
+ if(!$('dailyDate').value||!validNum('dailyPnl')){alert('Please enter a date and daily net P&L.');return}
+ const date=$('dailyDate').value;
+ if(state.days.some(d=>d.date===date&&d.historical)){alert('This date is a historical reference already included in your baseline. Do not overwrite it or add the same P&L again.');return}
+ state.days=state.days.filter(d=>!(d.date===date&&!d.historical));
+ state.days.push({date,pnl:Number($('dailyPnl').value),note:$('dailyNote').value.trim(),historical:false});
+ $('dailyPnl').value='';$('dailyNote').value='';persist();
+});
+function download(name,content,type){const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+$('exportCsv').addEventListener('click',()=>{
+ const rows=[['date','asset','lots','entry','stop_loss','net_pnl_usd','notes'],...state.trades.map(t=>[t.date,t.asset,t.lots,t.entry,t.stop,t.pnl,t.notes])];
+ const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+ download('oracle-trade-journal.csv',csv,'text/csv;charset=utf-8');
+});
+$('backupJson').addEventListener('click',()=>download('oracle-payout-tracker-backup.json',JSON.stringify(state,null,2),'application/json'));
+$('resetAll').addEventListener('click',()=>{if(confirm('This will erase your local journal, trades and settings and restore the starter data. Export a backup first. Continue?')){state=initialState();loadSettings();persist()}});
+loadSettings();render();
+})();
+</script>
+</body>
+</html>
