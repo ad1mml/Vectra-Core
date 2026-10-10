@@ -575,6 +575,166 @@ def _session_conversation_text(session, limit=10):
     return "\n".join(f'{t["role"].upper()}: {t["content"]}' for t in recent)
 
 
+# ---------------------------------------------------------------------------
+# PER-SYMBOL MEMORY
+#
+# Every chart analysis is already saved inside chart_memory.json (inside a
+# session). These helpers look across ALL of a user's sessions and pull out the
+# most recent analysis of each symbol, so a new upload of EURUSD can be linked
+# to the last EURUSD analysis no matter which session/chat it was made in, and
+# without ever mixing it up with XAUUSD / GBPUSD / etc.
+# ---------------------------------------------------------------------------
+
+SYMBOL_MEMORY_MAX_SYMBOLS = 8      # how many different symbols go into the prompt
+SYMBOL_MEMORY_FIELD_CHARS = 320    # trim long text fields to keep the prompt small
+SYMBOL_MEMORY_FIELDS = (
+    "timeframe", "chart_type", "current_price", "decision",
+    "entry", "stop_loss", "take_profit", "take_profit_1", "take_profit_2",
+    "risk_reward", "market_structure", "support_resistance", "demand_supply",
+    "liquidity_sweep", "fair_value_gaps", "change_of_character",
+    "buy_probability", "sell_probability", "buy_trigger", "sell_trigger",
+    "reasoning",
+)
+
+
+def _normalize_symbol(value):
+    """'EUR/USD', 'eurusd', 'OANDA:EURUSD', 'EURUSD, 15m' -> 'EURUSD'.
+    Returns '' when the symbol is missing / unreadable."""
+    if _is_unidentified(value):
+        return ""
+    text = str(value).upper().strip()
+    if ":" in text:
+        text = text.split(":")[-1]
+    text = re.split(r"[,\s]+(?=\d|M\d|H\d|D\d|W\d)", text)[0]
+    text = re.sub(r"[^A-Z0-9]", "", text)
+    return text
+
+
+def _symbol_memory(sessions, limit=SYMBOL_MEMORY_MAX_SYMBOLS):
+    """Latest saved analysis per symbol across every session, newest first."""
+    latest = {}
+    for session in sessions:
+        for turn in session.get("turns", []):
+            if turn.get("role") != "assistant" or turn.get("type") != "analysis":
+                continue
+            analysis = turn.get("content")
+            if not isinstance(analysis, dict):
+                continue
+            key = _normalize_symbol(analysis.get("symbol"))
+            if not key:
+                continue
+            stamp = turn.get("timestamp") or ""
+            if key not in latest or stamp >= latest[key]["timestamp"]:
+                latest[key] = {"symbol": key, "timestamp": stamp, "analysis": analysis}
+    entries = sorted(latest.values(), key=lambda e: e["timestamp"], reverse=True)
+    return entries[:limit]
+
+
+def _age_text(stamp):
+    try:
+        delta = datetime.utcnow() - datetime.fromisoformat(stamp)
+    except Exception:
+        return "unknown time ago"
+    minutes = int(delta.total_seconds() // 60)
+    if minutes < 60:
+        return f"{max(minutes, 0)} minutes ago"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours} hours ago"
+    return f"{hours // 24} days ago"
+
+
+def _build_symbol_memory_block(entries, caption_symbol=None):
+    """Prompt block holding the last analysis of each symbol + the rules for
+    linking a new chart to it."""
+    if not entries:
+        return (
+            "==========================================================\n"
+            "SYMBOL MEMORY\n"
+            "==========================================================\n\n"
+            "No earlier analysis is saved for this user. Treat this chart as a "
+            "brand-new analysis.\n"
+        )
+
+    blocks = []
+    for entry in entries:
+        analysis = entry["analysis"]
+        lines = [f"### {entry['symbol']} — analysed {_age_text(entry['timestamp'])} (UTC {entry['timestamp'][:16]})"]
+        for field in SYMBOL_MEMORY_FIELDS:
+            value = analysis.get(field)
+            if value in (None, "", [], {}):
+                continue
+            text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+            if len(text) > SYMBOL_MEMORY_FIELD_CHARS:
+                text = text[:SYMBOL_MEMORY_FIELD_CHARS].rstrip() + "…"
+            lines.append(f"- {field}: {text}")
+        blocks.append("\n".join(lines))
+
+    hint = ""
+    if caption_symbol:
+        hint = (f"\nThe user's caption mentions {caption_symbol.replace('/', '')}; "
+                "still confirm the symbol from the chart image itself.\n")
+
+    return f"""==========================================================
+SYMBOL MEMORY — LAST SAVED ANALYSIS PER SYMBOL
+==========================================================
+
+Below is the most recent analysis VectraCore saved for each symbol this user
+has uploaded (one entry per symbol, newest first).
+{hint}
+{chr(10).join(chr(10) + b for b in blocks)}
+
+HOW TO LINK THE NEW CHART TO THIS MEMORY
+----------------------------------------
+STEP 1 — Identify the symbol from the NEW chart image (and its timeframe).
+         Match it to at most ONE entry above, by symbol only. NEVER use an
+         entry of a different symbol — EURUSD memory is never used for
+         XAUUSD, and vice versa. If the symbol matches no entry (or you
+         cannot read the symbol), treat the chart as a brand-new analysis
+         and ignore this whole block.
+
+STEP 2 — If it matches, compare what the NEW chart shows with the saved
+         analysis (levels, zone, trigger conditions, invalidation, targets,
+         how much time has passed) and classify the situation as exactly one
+         of these:
+
+   A) STILL PENDING — the saved setup is still alive: price has not yet
+      reached the waiting zone / sweep / confirmation it asked for, and
+      nothing invalidated it. Continue the same plan: say what is still
+      missing and update the levels if the new chart sharpens them.
+
+   B) CONDITIONS NOW MET — price reached the zone and the confirmation
+      the saved analysis was waiting for (for example the CHOCH / sweep /
+      displacement) has now formed. Conclude: confirm the setup and, if
+      the Price-Grounding Protocol allows it, give the Buy/Sell with
+      entry, stop and target built from the NEW chart.
+
+   C) OPPORTUNITY GONE — the saved setup is no longer valid or usable:
+      its invalidation was broken, its target was already reached, price
+      ran away without a valid entry, the zone was swept without the
+      confirmation, or too much time passed for it to still matter.
+      Say so plainly in one sentence, then analyse the NEW chart as a
+      FRESH analysis. Do NOT keep defending or re-forcing the old idea.
+
+STEP 3 — In every case (A, B and C) use the saved analysis as EVIDENCE about
+         price behaviour: how price moved since then, how it reacted at the
+         old zone / liquidity pools, whether the old bias was respected or
+         rejected, and what that tells you about who is in control. Combine
+         that with what the new chart shows to form the best possible
+         analysis. The history informs the reading; it never replaces it.
+
+RULES
+-----
+- The NEW chart image is authoritative for current_price, structure and all
+  levels. Never copy old prices into the new analysis as if they were current.
+- Never keep an old Buy/Sell/Wait just because the old analysis said it.
+- Fill the "previous_analysis_link" field of the output schema exactly as
+  that field's note describes: "" for a brand-new chart, otherwise
+  "PENDING — ...", "TRIGGERED — ..." or "GONE — ..." (one or two short
+  sentences). Keep every other field of the schema as specified; add no keys.
+"""
+
+
 def _load_json(path, default):
     try:
         with open(path, "r") as f:
@@ -2555,7 +2715,10 @@ def _no_na_walk(node, decision):
 
             key_lower = key.lower()
 
-            if key_lower in _FIELD_FALLBACKS:
+            if key_lower == "previous_analysis_link":
+                node.pop(key, None)  # empty = brand-new chart, nothing to show
+
+            elif key_lower in _FIELD_FALLBACKS:
                 node[key] = _FIELD_FALLBACKS[key_lower]
 
             elif "probability" in key_lower:
@@ -3544,6 +3707,10 @@ def analyze_chart():
                     previous_question = t.get("content", "")
         previous_conversation = _session_conversation_text(active_session)
 
+        # Per-symbol memory: latest analysis of every symbol this user has
+        # uploaded, across ALL sessions (used for chart uploads below).
+        symbol_memory_entries = _symbol_memory(sessions)
+
         # ==========================================================
         # MODE 1
         # IMAGE ANALYSIS
@@ -3633,6 +3800,10 @@ news specifically.
                     )
                     chart_market_data_block += _facts_text
 
+            symbol_memory_block = _build_symbol_memory_block(
+                symbol_memory_entries, _detect_symbol(question or "")
+            )
+
             SYSTEM_PROMPT = f"""
 {ACTIVE_PROMPT}
 {chart_news_block}
@@ -3643,19 +3814,7 @@ USER PLAN
 
 {plan.upper()}
 
-==========================================================
-PREVIOUS ANALYSIS (CONTEXT ONLY — NEVER A DECISION)
-==========================================================
-
-{previous_analysis}
-
-IMPORTANT FRESH-CHART RULE
---------------------------
-The uploaded image in THIS request is authoritative and always overrides
-the previous analysis. Treat previous_analysis as stale context only.
-Re-read the new chart from scratch. Never preserve a previous BUY/SELL/WAIT
-decision merely because the prior analysis said it. If price structure,
-liquidity, momentum, or risk has changed, the NEW chart wins.
+{symbol_memory_block}
 
 ==========================================================
 USER REQUEST

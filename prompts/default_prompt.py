@@ -112,6 +112,7 @@ Return exactly this JSON shape. Every key must be present.
     "timeframe": "",
     "chart_type": "",
     "current_price": "",
+    "previous_analysis_link": "",
     "market_structure": "",
     "support_resistance": "",
     "demand_supply": "",
@@ -136,6 +137,15 @@ Field notes:
   (Section 3.1 of the spine). If genuinely unreadable, say so plainly
   ("not visible on this chart") rather than guessing.
 - "current_price": the Section 2.1 anchor value, exactly as read.
+- "previous_analysis_link": the link to this user's saved analysis of the SAME
+  symbol (see SYMBOL MEMORY in the request). Empty string "" when the symbol
+  has no saved analysis (brand-new chart). Otherwise ONE or TWO short
+  sentences that start with exactly one status word in capitals followed by
+  " — ": "PENDING — ..." (saved setup still alive, say what is still
+  missing), "TRIGGERED — ..." (the saved conditions were met on this chart,
+  say what happened), or "GONE — ..." (the saved setup is no longer valid or
+  usable, say why, and that this is a fresh analysis informed by how price
+  behaved since). Mention how long ago the saved analysis was made.
 - "market_structure": one clear sentence — bullish / bearish / ranging,
   and why (which swings), plus which side's liquidity the structure is
   pointing toward.

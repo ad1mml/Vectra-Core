@@ -1665,6 +1665,25 @@
                         </div>
             `;
 
+            // Link to the saved analysis of the same symbol (PENDING / TRIGGERED / GONE).
+            const linkRaw = (data.previous_analysis_link || '').toString().trim();
+            let linkCardHTML = '';
+            if (linkRaw) {
+                const linkMatch = linkRaw.match(/^(PENDING|TRIGGERED|GONE)\s*[\u2014\-:]\s*([\s\S]*)$/i);
+                const linkStatus = linkMatch ? linkMatch[1].toUpperCase() : 'LINKED';
+                const linkText = linkMatch ? linkMatch[2] : linkRaw;
+                const linkColor = linkStatus === 'TRIGGERED' ? '#2ecc71' : (linkStatus === 'GONE' ? '#ef4444' : '#f5a623');
+                const linkTitle = linkStatus === 'PENDING' ? 'Previous analysis \u2014 still pending'
+                    : linkStatus === 'TRIGGERED' ? 'Previous analysis \u2014 conditions met'
+                    : linkStatus === 'GONE' ? 'Previous analysis \u2014 no longer valid'
+                    : 'Linked to your previous analysis';
+                linkCardHTML = `
+                <div class="report-card" style="border-left: 4px solid ${linkColor}">
+                    <h3>${linkTitle}</h3>
+                    <p style="margin:0;line-height:1.5">${escapeHtml(linkText)}</p>
+                </div>`;
+            }
+
             return `
                 <div class="report-card">
                     <div class="snapshot-grid">
@@ -1674,6 +1693,7 @@
                         <div><span class="label">Market Structure</span><span class="value">${escapeHtml(data.market_structure_simple || data.market_structure || 'N/A')}</span></div>
                     </div>
                 </div>
+                ${linkCardHTML}
                 <div class="report-card" style="border-left: 4px solid var(--accent-color)">
                     <h3>Decision</h3>
                     <div class="decision-value">${escapeHtml(data.decision || 'N/A')}</div>

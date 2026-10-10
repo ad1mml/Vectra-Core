@@ -18,6 +18,7 @@ PRO OUTPUT SCHEMA — CHART MODE (MODE A) — EXACT KEYS, NOTHING EXTRA
     "timeframe": "",
     "chart_type": "",
     "current_price": "",
+    "previous_analysis_link": "",
     "market_structure": "",
     "support_resistance": "",
     "demand_supply": "",
@@ -45,6 +46,15 @@ FIELD NOTES:
   guess.
 - current_price: the Price-Grounding Protocol anchor (decision_spine.py
   Section 2.1), exactly as read.
+- previous_analysis_link: the link to this user's saved analysis of the SAME
+  symbol (see SYMBOL MEMORY in the request). Empty string "" when the symbol
+  has no saved analysis (brand-new chart). Otherwise ONE or TWO short
+  sentences that start with exactly one status word in capitals followed by
+  " — ": "PENDING — ..." (saved setup still alive, say what is still
+  missing), "TRIGGERED — ..." (the saved conditions were met on this chart,
+  say what happened), or "GONE — ..." (the saved setup is no longer valid or
+  usable, say why, and that this is a fresh analysis informed by how price
+  behaved since). Mention how long ago the saved analysis was made.
 - market_structure: the pro_structure.py read — trend-cycle position,
   range-vs-trend distinction, multi-swing confluence where relevant.
 - support_resistance: LEGACY FIELD NAME — this field carries the LIQUIDITY
