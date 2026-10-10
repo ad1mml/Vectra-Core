@@ -1087,6 +1087,49 @@ def _is_transient_error(exc) -> bool:
     return any(marker in text for marker in TRANSIENT_ERROR_MARKERS)
 
 
+class _AIChainError(Exception):
+    """Every model in the chain failed. `kinds` says why ('quota', 'timeout',
+    'overloaded') so the user sees the real reason, not a guess. The message
+    keeps the last underlying error text so _is_transient_error still works."""
+    def __init__(self, message, kinds):
+        super().__init__(message)
+        self.kinds = kinds
+
+
+def _classify_ai_error(exc) -> str:
+    text = str(exc).upper()
+    if _is_quota_error(exc):
+        return "quota"
+    if "TIMED OUT" in text or "TIMEOUT" in text or "DEADLINE_EXCEEDED" in text or "504" in text:
+        return "timeout"
+    return "overloaded"
+
+
+# model name -> time.time() until which it is skipped after a 429. Skipping a
+# model we KNOW is out of quota saves its whole round-trip (and stops burning
+# more of the free-tier requests) instead of re-hitting it on every click.
+_model_blocked_until = {}
+_model_block_lock = threading.Lock()
+
+
+def _block_model_after_quota(model, exc):
+    delay = 60.0
+    m = re.search(r"retry(?:Delay)?\W+(?:in\s+)?\"?([\d.]+)\s*s", str(exc), re.IGNORECASE)
+    if m:
+        try:
+            delay = float(m.group(1)) + 2
+        except ValueError:
+            pass
+    delay = max(30.0, min(delay, 300.0))
+    with _model_block_lock:
+        _model_blocked_until[model] = time.time() + delay
+
+
+def _model_is_blocked(model) -> bool:
+    with _model_block_lock:
+        return time.time() < _model_blocked_until.get(model, 0)
+
+
 def _adapt_thinking_config(config, model):
     """Gemini 2.5 models take thinking_budget; thinking_level is Gemini 3+
     only. With the default fallback (gemini-2.5-flash) the old code sent
@@ -1492,7 +1535,13 @@ def _run_ai_chain(model, contents, config=None, deadline=HARD_DEADLINE_SECONDS, 
             return r
 
     last_exc = None
+    kinds = []
+    skipped_blocked = []
     for m in _gemini_model_chain(model):
+        if _model_is_blocked(m):
+            skipped_blocked.append(m)
+            kinds.append("quota")
+            continue
         if last_exc is not None and left() < 10:
             break
         try:
@@ -1506,14 +1555,24 @@ def _run_ai_chain(model, contents, config=None, deadline=HARD_DEADLINE_SECONDS, 
             last_exc = e
             if not _is_transient_error(e):
                 raise
-            app.logger.warning("%s unavailable (%s) — trying the next model", m, str(e)[:100])
+            kind = _classify_ai_error(e)
+            kinds.append(kind)
+            if kind == "quota":
+                _block_model_after_quota(m, e)
+            # Logged at ERROR with the real reason so it is visible in the
+            # server log which model failed and why.
+            app.logger.error("AI model %s failed [%s]: %s", m, kind, str(e)[:300])
+
+    if skipped_blocked:
+        app.logger.warning("Skipped models in quota cooldown: %s", ", ".join(skipped_blocked))
 
     if not OPENROUTER_FIRST and left() > 8:
         r = _try_openrouter_first(contents, config, timeout=min(OPENROUTER_TIMEOUT_SECONDS, left()))
         if r is not None:
             return r
 
-    raise last_exc or TimeoutError("No AI model could answer within the time budget.")
+    summary = str(last_exc)[:300] if last_exc else "all models are in quota cooldown"
+    raise _AIChainError(f"All AI models failed ({', '.join(kinds) or 'no attempt'}): {summary}", kinds)
 
 
 def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SECONDS):
@@ -3351,6 +3410,25 @@ def list_models():
         app.logger.exception("Model listing failed")
         return jsonify({"error": "Could not list models."}), 500
 
+def _refund_failed_chart_credit():
+    """Give back the chart credit when the AI call failed. Previously the
+    credit was spent before the AI ran and only refunded for one failure type,
+    so every timeout/quota error silently cost the user a chart upload."""
+    charge = request.environ.pop("vc_chart_charge", None)
+    if not charge:
+        return
+    email, plan = charge
+    if plan == "vip":
+        return
+    try:
+        usage = get_usage()
+        if email in usage:
+            usage[email]["charts_used"] = max(0, usage[email].get("charts_used", 1) - 1)
+            save_usage(usage)
+    except Exception:
+        app.logger.exception("could not refund chart credit")
+
+
 @app.route("/analyze-chart", methods=["POST"])
 def analyze_chart():
 
@@ -3455,6 +3533,10 @@ def analyze_chart():
 
             if not allowed:
                 return jsonify(response), 429
+
+            # Remember that a chart credit was just spent, so if the AI call
+            # then fails (timeout / quota / busy) the credit is given back.
+            request.environ["vc_chart_charge"] = (user_email, plan)
 
             image_bytes = chart.read()
 
@@ -4094,18 +4176,33 @@ Return JSON:
     except TimeoutError as e:
 
         app.logger.error("analyze_chart: hard deadline hit: %s", e)
+        _refund_failed_chart_credit()
 
         return jsonify({
 
             "success": False,
 
-            "error": "The AI took too long to respond — please try again.",
+            "error": "The AI took too long to respond — this attempt wasn't counted. Please try again.",
 
         }), 504
 
     except Exception as e:
 
         traceback.print_exc()
+        _refund_failed_chart_credit()
+
+        if isinstance(e, _AIChainError):
+            kinds = set(e.kinds)
+            if kinds == {"quota"}:
+                msg = ("The AI's free quota is used up right now (rate limit reached). "
+                       "Please try again in about a minute — this attempt wasn't counted.")
+            elif "quota" not in kinds and "timeout" in kinds:
+                msg = ("The AI is responding too slowly right now. "
+                       "Please try again — this attempt wasn't counted.")
+            else:
+                msg = ("The AI is busy or its quota is used up for the moment. "
+                       "Please try again in about a minute — this attempt wasn't counted.")
+            return jsonify({"success": False, "error": msg}), 503
 
         if _is_transient_error(e):
             return jsonify({
