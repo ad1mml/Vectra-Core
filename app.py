@@ -120,6 +120,11 @@ MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 AI_THINKING_LEVEL = os.environ.get("AI_THINKING_LEVEL", "low").strip().lower()
 if AI_THINKING_LEVEL not in ("minimal", "low", "medium", "high"):
     AI_THINKING_LEVEL = "low"
+# Follow-up questions used a hardcoded "minimal" thinking level, which newer
+# models (e.g. gemini-3.8-flash) reject with a 400 error. "low" works everywhere.
+AI_FOLLOWUP_THINKING_LEVEL = os.environ.get("AI_FOLLOWUP_THINKING_LEVEL", "low").strip().lower()
+if AI_FOLLOWUP_THINKING_LEVEL not in ("minimal", "low", "medium", "high"):
+    AI_FOLLOWUP_THINKING_LEVEL = "low"
 AI_CHART_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_CHART_MAX_OUTPUT_TOKENS", "4096"))
 AI_TEXT_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_TEXT_MAX_OUTPUT_TOKENS", "1024"))
 PLAN_CONFIG = {
@@ -163,6 +168,9 @@ PLAN_MODELS = {
     "vip": MODEL_NAME
 }
 FALLBACK_MODEL_NAME = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+# Optional third Gemini model, tried only if the first two are rate-limited or
+# overloaded. Leave unset to skip it.
+FALLBACK_MODEL_2_NAME = os.environ.get("GEMINI_FALLBACK_MODEL_2", "").strip()
 MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8MB upload cap
 MAX_HISTORY_PER_USER = 50
 NEWS_HEADLINE_LIMIT = 8
@@ -1066,6 +1074,28 @@ def _is_transient_error(exc) -> bool:
     return any(marker in text for marker in TRANSIENT_ERROR_MARKERS)
 
 
+def _is_quota_error(exc) -> bool:
+    """Google says 429 / RESOURCE_EXHAUSTED: the model's free quota is used up.
+    Retrying the same model right away only wastes another request, so we
+    move on to the next model instead."""
+    text = str(exc).upper().lstrip()
+    return "RESOURCE_EXHAUSTED" in text or text.startswith("429")
+
+
+def _thinking_level_rejected(exc) -> bool:
+    text = str(exc).lower()
+    return "thinking level" in text and "not supported" in text
+
+
+def _gemini_model_chain(primary):
+    """Primary model first, then each distinct fallback, in order."""
+    chain = []
+    for m in (primary, FALLBACK_MODEL_NAME, FALLBACK_MODEL_2_NAME):
+        if m and m not in chain:
+            chain.append(m)
+    return chain
+
+
 def _make_gemini_contents(raw_contents):
     """Convert mixed list (strings + PIL Images) into proper SDK Parts"""
     parts = []
@@ -1115,11 +1145,27 @@ def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay
         try:
             start_request = time.perf_counter()
 
-            response = client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=config
-            )
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=config
+                )
+            except Exception as first_exc:
+                # Some models refuse a thinking level (e.g. "MINIMAL is not
+                # supported"). Retry once with "low", which every model accepts.
+                if _thinking_level_rejected(first_exc) and getattr(config, "thinking_config", None) is not None:
+                    app.logger.warning(
+                        "Gemini %s rejected the thinking level — retrying with 'low'", model
+                    )
+                    config.thinking_config = types.ThinkingConfig(thinking_level="low")
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=contents,
+                        config=config
+                    )
+                else:
+                    raise
 
             request_time = time.perf_counter() - start_request
             total_time = time.perf_counter() - start_total
@@ -1134,7 +1180,7 @@ def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay
             return response
         except Exception as e:
             last_exc = e
-            if not _is_transient_error(e) or attempt == max_retries - 1:
+            if not _is_transient_error(e) or _is_quota_error(e) or attempt == max_retries - 1:
                 raise
             delay = base_delay * (2 ** attempt)
             app.logger.warning(
@@ -1393,30 +1439,22 @@ def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SE
         or_response = _try_openrouter_first(contents, config)
         if or_response is not None:
             return or_response
-        try:
-            gemini_contents = _make_gemini_contents(contents)
-            # max_retries=2: one real retry (with backoff) on a transient
-            # error before giving up on this model — a bare 503 "high
-            # demand" is exactly the kind of blip Google's own error
-            # message says is "usually temporary," so it deserves at least
-            # one second attempt before burning the fallback model too.
-            return _generate_with_retry(
-                model=MODEL_NAME,
-                contents=gemini_contents,
-                config=config,
-                max_retries=2
-            )
-        except Exception as e:
-            if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == MODEL_NAME:
-                raise
-            app.logger.warning("Primary model overloaded — falling back to %s", FALLBACK_MODEL_NAME)
-            gemini_contents = _make_gemini_contents(contents)
-            return _generate_with_retry(
-                model=FALLBACK_MODEL_NAME,
-                contents=gemini_contents,
-                config=config,
-                max_retries=2
-            )
+        last_exc = None
+        for m in _gemini_model_chain(MODEL_NAME):
+            try:
+                gemini_contents = _make_gemini_contents(contents)
+                return _generate_with_retry(
+                    model=m,
+                    contents=gemini_contents,
+                    config=config,
+                    max_retries=2
+                )
+            except Exception as e:
+                last_exc = e
+                if not _is_transient_error(e):
+                    raise
+                app.logger.warning("%s unavailable — trying the next model", m)
+        raise last_exc
 
     _wait_budget = _effective_deadline(deadline)
     future = _analyze_executor.submit(_do_call)
@@ -1461,25 +1499,22 @@ def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECON
         or_response = _try_openrouter_first(contents, config)
         if or_response is not None:
             return or_response
-        try:
-            # max_retries=2: one real retry (with backoff) before falling
-            # over to the fallback model — a bare 503 "high demand" is
-            # exactly the kind of blip Google's own error message calls
-            # "usually temporary," so it deserves one more attempt on the
-            # same model before burning the fallback too.
-            return _generate_with_retry(model=model, contents=contents, config=config, max_retries=2)
-        except Exception as e:
-            if not _is_transient_error(e) or not FALLBACK_MODEL_NAME or FALLBACK_MODEL_NAME == model:
-                raise
-            app.logger.warning(
-                "analyze_chart: %s overloaded — falling back to %s", model, FALLBACK_MODEL_NAME
-            )
-            return _generate_with_retry(
-                model=FALLBACK_MODEL_NAME,
-                contents=contents,
-                config=config,
-                max_retries=2
-            )
+        # Try each Gemini model in turn (GEMINI_MODEL, GEMINI_FALLBACK_MODEL,
+        # then the optional GEMINI_FALLBACK_MODEL_2) while the failure is only
+        # "busy" or "quota used up". A real error (bad request) stops at once.
+        last_exc = None
+        for m in _gemini_model_chain(model):
+            try:
+                return _generate_with_retry(model=m, contents=contents, config=config, max_retries=2)
+            except Exception as e:
+                last_exc = e
+                if not _is_transient_error(e):
+                    raise
+                app.logger.warning(
+                    "analyze_chart: %s unavailable (%s) — trying the next model",
+                    m, str(e)[:100]
+                )
+        raise last_exc
 
     _wait_budget = _effective_deadline(deadline)
     future = _analyze_executor.submit(_do_call)
@@ -3820,7 +3855,7 @@ Return JSON:
                     # actual answer, silently returning an empty response
                     # after a few follow-ups. Raised to give the answer
                     # itself room to exist.
-                    max_output_tokens=1024,
+                    max_output_tokens=AI_TEXT_MAX_OUTPUT_TOKENS,
 
                     # Follow-ups are meant to be quick answers, not a full
                     # re-analysis, so keep thinking minimal — matches every
@@ -3828,7 +3863,7 @@ Return JSON:
                     # the "low" level this used to hardcode, which was the
                     # actual cause of empty follow-up answers.
                     thinking_config=types.ThinkingConfig(
-                        thinking_level="minimal"
+                        thinking_level=AI_FOLLOWUP_THINKING_LEVEL
                     )
 
                 )
@@ -4019,6 +4054,12 @@ Return JSON:
     except Exception as e:
 
         traceback.print_exc()
+
+        if _is_transient_error(e):
+            return jsonify({
+                "success": False,
+                "error": "The AI is busy or its free quota is used up for the moment. Please try again in about a minute.",
+            }), 503
 
         return jsonify({
 
