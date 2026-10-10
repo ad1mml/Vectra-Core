@@ -109,6 +109,19 @@ SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() 
 # accidentally combine the two into a cookie that silently never gets set.
 SESSION_COOKIE_SECURE = True
 MODEL_NAME = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+# Quality vs. speed controls — set these in .env (no code edits needed).
+#   AI_THINKING_LEVEL            minimal | low | medium | high  (default low)
+#   AI_CHART_MAX_OUTPUT_TOKENS   chart analysis answer cap     (default 4096)
+#   AI_TEXT_MAX_OUTPUT_TOKENS    general-question answer cap   (default 1024)
+# Gemini counts its "thinking" tokens inside the output cap, so when you raise
+# AI_THINKING_LEVEL also raise the two caps, and raise AI_PER_ATTEMPT_TIMEOUT_MS
+# and AI_HARD_DEADLINE_SECONDS (defined below) so slower, deeper answers
+# are not cut off.
+AI_THINKING_LEVEL = os.environ.get("AI_THINKING_LEVEL", "low").strip().lower()
+if AI_THINKING_LEVEL not in ("minimal", "low", "medium", "high"):
+    AI_THINKING_LEVEL = "low"
+AI_CHART_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_CHART_MAX_OUTPUT_TOKENS", "4096"))
+AI_TEXT_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_TEXT_MAX_OUTPUT_TOKENS", "1024"))
 PLAN_CONFIG = {
     "default": {
         "temperature": 0.20,
@@ -122,7 +135,7 @@ PLAN_CONFIG = {
         # the reasoning chain. Bumped to "low" to fix that; if latency
         # becomes a problem again, shrink the prompt itself rather than
         # dropping this back to "minimal".
-        "thinking_level": "low"
+        "thinking_level": AI_THINKING_LEVEL
     },
 
     "pro": {
@@ -131,7 +144,7 @@ PLAN_CONFIG = {
         # Same issue as "default" above — this prompt (decision_spine.py +
         # 8 Pro modules) needs real step-by-step reasoning. "minimal" was
         # causing WAIT/N/A fallbacks instead of completed analysis.
-        "thinking_level": "low"
+        "thinking_level": AI_THINKING_LEVEL
     },
 
     "vip": {
@@ -141,7 +154,7 @@ PLAN_CONFIG = {
         # even more reasoning steps than default/pro, so it needs at least
         # as much thinking budget, not less. "minimal" here was the same
         # WAIT/N/A fallback problem, just on an even heavier prompt.
-        "thinking_level": "low"
+        "thinking_level": AI_THINKING_LEVEL
     }
 }
 PLAN_MODELS = {
@@ -3480,7 +3493,7 @@ USER REQUEST
     # Caps how long the JSON response is allowed to be — generating
     # output takes real time regardless of thinking_level, so this
     # keeps responses from running unnecessarily long.
-    max_output_tokens=4096,
+    max_output_tokens=AI_CHART_MAX_OUTPUT_TOKENS,
 
     thinking_config=types.ThinkingConfig(
         thinking_level=PLAN_SETTINGS["thinking_level"]
@@ -3958,7 +3971,7 @@ Return JSON:
 
                 # General answers are just {"answer": ""} — cap output
                 # length so a rambling answer can't add latency.
-                max_output_tokens=1024,
+                max_output_tokens=AI_TEXT_MAX_OUTPUT_TOKENS,
 
                 thinking_config=types.ThinkingConfig(
                     thinking_level=PLAN_SETTINGS["thinking_level"]
