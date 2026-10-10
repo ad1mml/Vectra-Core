@@ -202,10 +202,18 @@ NEWS_CACHE_TTL_SECONDS = 300  # avoid hammering Finnhub if several users ask in 
 # to actually finish successfully instead of being cut off pre-emptively.
 # If you need this closer to 10s, the fix is cutting VIP/Pro's prompt size
 # and/or output length, not lowering this number further.
-HARD_DEADLINE_SECONDS = float(os.environ.get("AI_HARD_DEADLINE_SECONDS", "25.0"))
+#
+# TIMEOUT FIX: the old values (25s total / 10s per attempt) were the cause of
+# the "AI took too long" errors. A chart image + the big Pro/VIP prompt +
+# thinking simply cannot finish inside 10s, so EVERY attempt was cut off at
+# 10s, retried (another 10s), then the fallback model was cut off too, and
+# the whole thing blew past the 25s ceiling. Those retries were pure wasted
+# waiting. Now: one real attempt per model with enough time to finish, and a
+# total budget that fits primary + one fallback.
+HARD_DEADLINE_SECONDS = float(os.environ.get("AI_HARD_DEADLINE_SECONDS", "55.0"))
 # Per-attempt timeout inside _generate_with_retry. Must stay >= 10000 (the
 # Gemini API's own enforced floor).
-PER_ATTEMPT_TIMEOUT_MS = max(10000, int(os.environ.get("AI_PER_ATTEMPT_TIMEOUT_MS", "10000")))
+PER_ATTEMPT_TIMEOUT_MS = max(10000, int(os.environ.get("AI_PER_ATTEMPT_TIMEOUT_MS", "30000")))
 
 # Email verification — sends a 6-digit code via Brevo's email API before an
 # account is ever created. Brevo has a genuinely free tier (300 emails/day,
@@ -1066,12 +1074,36 @@ def _handle_whop_webhook(event_type, data):
 # ---------------------------------------------------------------------------
 # Gemini call wrapper — retries transient overload errors
 # ---------------------------------------------------------------------------
-TRANSIENT_ERROR_MARKERS = ("UNAVAILABLE", "RESOURCE_EXHAUSTED", "503", "429", "overloaded", "DEADLINE_EXCEEDED", "504")
+TRANSIENT_ERROR_MARKERS = (
+    "UNAVAILABLE", "RESOURCE_EXHAUSTED", "503", "429", "OVERLOADED",
+    "DEADLINE_EXCEEDED", "504", "TIMED OUT", "TIMEOUT", "READ ERROR",
+)
 
 
 def _is_transient_error(exc) -> bool:
+    # Markers are upper-case; the old version compared them against an
+    # upper-cased message, so the lowercase "overloaded" marker never matched.
     text = str(exc).upper()
     return any(marker in text for marker in TRANSIENT_ERROR_MARKERS)
+
+
+def _adapt_thinking_config(config, model):
+    """Gemini 2.5 models take thinking_budget; thinking_level is Gemini 3+
+    only. With the default fallback (gemini-2.5-flash) the old code sent
+    thinking_level and got a 400 — which is not 'transient', so the fallback
+    never actually helped. Translate the level per model so every model in
+    the chain can really answer."""
+    tc = getattr(config, "thinking_config", None)
+    level = getattr(tc, "thinking_level", None) if tc is not None else None
+    if level is None or "2.5" not in (model or ""):
+        return config
+    level_str = str(level).lower().split(".")[-1]
+    budgets = {"minimal": 0, "low": 512, "medium": 2048, "high": 4096}
+    budget = budgets.get(level_str, 512)
+    if "flash-lite" not in model and budget == 0:
+        budget = 128
+    config.thinking_config = types.ThinkingConfig(thinking_budget=budget)
+    return config
 
 
 def _is_quota_error(exc) -> bool:
@@ -1140,6 +1172,7 @@ def _generate_with_retry(model, contents, config=None, max_retries=1, base_delay
         config = types.GenerateContentConfig(
             http_options=types.HttpOptions(timeout=timeout_ms)
         )
+    config = _adapt_thinking_config(config, model)
 
     for attempt in range(max_retries):
         try:
@@ -1209,7 +1242,13 @@ OPENROUTER_ENABLED = bool(OPENROUTER_API_KEY) and os.environ.get("OPENROUTER_ENA
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Free OpenRouter accounts get 50 requests/day (1000 after buying $10 credits).
 OPENROUTER_DAILY_LIMIT = int(os.environ.get("OPENROUTER_DAILY_LIMIT", "50"))
-OPENROUTER_TIMEOUT_SECONDS = float(os.environ.get("OPENROUTER_TIMEOUT_SECONDS", "40"))
+OPENROUTER_TIMEOUT_SECONDS = float(os.environ.get("OPENROUTER_TIMEOUT_SECONDS", "20"))
+# SPEED FIX: a free, reasoning-enabled 27B vision model on OpenRouter is
+# usually much slower than Gemini Flash-Lite, and when it ran FIRST every
+# request paid its full wait before Gemini even started. Gemini now goes
+# first and OpenRouter is only the last-resort backup. Set
+# OPENROUTER_FIRST=true to restore the old order.
+OPENROUTER_FIRST = os.environ.get("OPENROUTER_FIRST", "false").strip().lower() == "true"
 OPENROUTER_MAX_TOKENS = int(os.environ.get("OPENROUTER_MAX_TOKENS", "6000"))
 # "low" | "medium" | "high" | "off" — how much the Qwen model thinks first.
 OPENROUTER_REASONING_EFFORT = os.environ.get("OPENROUTER_REASONING_EFFORT", "low").strip().lower()
@@ -1326,7 +1365,7 @@ def _openrouter_clean_text(text, wants_json):
     return text
 
 
-def _call_openrouter(contents, config=None):
+def _call_openrouter(contents, config=None, timeout=None):
     """One OpenRouter request. Returns an object with `.text`. Raises
     _OpenRouterLimitError on 429 and a normal Exception on anything else."""
     wants_json = getattr(config, "response_mime_type", None) == "application/json"
@@ -1360,7 +1399,7 @@ def _call_openrouter(contents, config=None):
     start = time.perf_counter()
     try:
         resp = requests.post(OPENROUTER_URL, headers=headers, json=payload,
-                             timeout=(10, OPENROUTER_TIMEOUT_SECONDS))
+                             timeout=(10, timeout or OPENROUTER_TIMEOUT_SECONDS))
     except requests.exceptions.RequestException as e:
         _openrouter_block_until(time.time() + OPENROUTER_FAILURE_COOLDOWN_SECONDS, "network: " + str(e)[:120])
         raise
@@ -1409,12 +1448,12 @@ def _call_openrouter(contents, config=None):
     return _OpenRouterResponse(text, OPENROUTER_MODEL)
 
 
-def _try_openrouter_first(contents, config=None):
-    """Returns an OpenRouter response, or None if Gemini should handle it."""
+def _try_openrouter_first(contents, config=None, timeout=None):
+    """Returns an OpenRouter response, or None if the caller should move on."""
     if not _openrouter_available():
         return None
     try:
-        return _call_openrouter(contents, config)
+        return _call_openrouter(contents, config, timeout=timeout)
     except _OpenRouterLimitError as e:
         app.logger.warning("%s", e)
     except Exception as e:
@@ -1426,7 +1465,55 @@ def _try_openrouter_first(contents, config=None):
 def _effective_deadline(deadline):
     """Give the hard deadline extra room when OpenRouter goes first, so a
     slow OpenRouter attempt still leaves Gemini time to answer."""
-    return deadline + (OPENROUTER_TIMEOUT_SECONDS if _openrouter_available() else 0)
+    # Only OpenRouter-first mode needs extra room; as a last-resort backup it
+    # runs inside the normal budget (see _run_ai_chain).
+    return deadline + (OPENROUTER_TIMEOUT_SECONDS if (OPENROUTER_FIRST and _openrouter_available()) else 0)
+
+
+def _run_ai_chain(model, contents, config=None, deadline=HARD_DEADLINE_SECONDS, convert=False):
+    """One shared model chain for every AI call, run inside the worker thread.
+
+    Order: Gemini primary -> Gemini fallback(s) -> OpenRouter (backup).
+    - One real attempt per model (max_retries=1): the old same-model retry
+      just doubled the wait on a request that was already too slow.
+    - Each attempt's timeout is capped by the time left in the budget, so a
+      fallback always gets a fair slice instead of being starved.
+    - A fallback model is skipped if too little budget remains, so we fail
+      cleanly instead of starting a call we can't finish.
+    """
+    t0 = time.monotonic()
+
+    def left():
+        return deadline - (time.monotonic() - t0)
+
+    if OPENROUTER_FIRST:
+        r = _try_openrouter_first(contents, config)
+        if r is not None:
+            return r
+
+    last_exc = None
+    for m in _gemini_model_chain(model):
+        if last_exc is not None and left() < 10:
+            break
+        try:
+            payload = _make_gemini_contents(contents) if convert else contents
+            timeout_ms = max(10000, min(PER_ATTEMPT_TIMEOUT_MS, int(left() * 1000)))
+            return _generate_with_retry(
+                model=m, contents=payload, config=config,
+                max_retries=1, timeout_ms=timeout_ms,
+            )
+        except Exception as e:
+            last_exc = e
+            if not _is_transient_error(e):
+                raise
+            app.logger.warning("%s unavailable (%s) — trying the next model", m, str(e)[:100])
+
+    if not OPENROUTER_FIRST and left() > 8:
+        r = _try_openrouter_first(contents, config, timeout=min(OPENROUTER_TIMEOUT_SECONDS, left()))
+        if r is not None:
+            return r
+
+    raise last_exc or TimeoutError("No AI model could answer within the time budget.")
 
 
 def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SECONDS):
@@ -1435,26 +1522,7 @@ def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SE
     enforced with a future/thread rather than trusting the SDK's own
     timeout."""
     def _do_call():
-        # OpenRouter first; Gemini below only runs if it is skipped/failed.
-        or_response = _try_openrouter_first(contents, config)
-        if or_response is not None:
-            return or_response
-        last_exc = None
-        for m in _gemini_model_chain(MODEL_NAME):
-            try:
-                gemini_contents = _make_gemini_contents(contents)
-                return _generate_with_retry(
-                    model=m,
-                    contents=gemini_contents,
-                    config=config,
-                    max_retries=2
-                )
-            except Exception as e:
-                last_exc = e
-                if not _is_transient_error(e):
-                    raise
-                app.logger.warning("%s unavailable — trying the next model", m)
-        raise last_exc
+        return _run_ai_chain(MODEL_NAME, contents, config, deadline, convert=True)
 
     _wait_budget = _effective_deadline(deadline)
     future = _analyze_executor.submit(_do_call)
@@ -1473,7 +1541,10 @@ def _generate_content_resilient(contents, config=None, deadline=HARD_DEADLINE_SE
 # future.result(timeout=...). Using threads (not asyncio) keeps this a
 # drop-in wrapper around the existing synchronous SDK calls — no need to
 # rewrite the rest of the Flask app as async.
-_analyze_executor = ThreadPoolExecutor(max_workers=8)
+# 16 workers: calls abandoned after a timeout keep occupying a worker until
+# their HTTP call ends, and with only 8 a few stuck calls made NEW requests
+# queue behind them and time out too (a cascade).
+_analyze_executor = ThreadPoolExecutor(max_workers=16)
 
 
 def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECONDS):
@@ -1495,26 +1566,7 @@ def _analyze_generate(model, contents, config=None, deadline=HARD_DEADLINE_SECON
     nothing logged.
     """
     def _do_call():
-        # OpenRouter first; Gemini below only runs if it is skipped/failed.
-        or_response = _try_openrouter_first(contents, config)
-        if or_response is not None:
-            return or_response
-        # Try each Gemini model in turn (GEMINI_MODEL, GEMINI_FALLBACK_MODEL,
-        # then the optional GEMINI_FALLBACK_MODEL_2) while the failure is only
-        # "busy" or "quota used up". A real error (bad request) stops at once.
-        last_exc = None
-        for m in _gemini_model_chain(model):
-            try:
-                return _generate_with_retry(model=m, contents=contents, config=config, max_retries=2)
-            except Exception as e:
-                last_exc = e
-                if not _is_transient_error(e):
-                    raise
-                app.logger.warning(
-                    "analyze_chart: %s unavailable (%s) — trying the next model",
-                    m, str(e)[:100]
-                )
-        raise last_exc
+        return _run_ai_chain(model, contents, config, deadline, convert=False)
 
     _wait_budget = _effective_deadline(deadline)
     future = _analyze_executor.submit(_do_call)
@@ -1565,7 +1617,7 @@ def _fetch_news_headlines(category="general", limit=NEWS_HEADLINE_LIMIT, force=F
         resp = requests.get(
             "https://finnhub.io/api/v1/news",
             params={"category": category, "token": FINNHUB_KEY},
-            timeout=10,
+            timeout=5,
         )
         resp.raise_for_status()
         news_data = resp.json()
@@ -1657,7 +1709,7 @@ def _fetch_ohlcv(symbol: str, interval="15min", outputsize=100):
                 "outputsize": outputsize,
                 "apikey": TWELVE_DATA_KEY,
             },
-            timeout=8,
+            timeout=5,
         )
         resp.raise_for_status()
         payload = resp.json()
@@ -1736,7 +1788,7 @@ def _get_market_facts(symbol: str):
             }
             per_tf = {}
             for tf, fut in futures.items():
-                candles = fut.result(timeout=12)
+                candles = fut.result(timeout=7)
                 if candles:
                     per_tf[tf] = candles
         if not per_tf:
