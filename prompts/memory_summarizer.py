@@ -32,6 +32,9 @@ possible:
   - decision (Buy/Sell/Wait)
   - entry, stop_loss, take_profit (or take_profit_1/2/3 for VIP)
   - current_price at time of analysis
+  - the liquidity read: the key buy-side and sell-side pools with their
+    status (unswept/swept/taken), the draw on liquidity, the sweep and
+    confirmation status, the entry zone, and the target pool
   - the core structural reasoning (why this decision), condensed but not
     stripped of its actual logic
   - any explicit commitments made in follow-up answers (e.g., "I said the

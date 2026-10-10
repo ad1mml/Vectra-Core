@@ -13,7 +13,7 @@ VIP TECHNICAL READING CONVENTIONS
 Apply the full technical reading conventions described for Pro: candle
 reading (body vs. wick conviction), precise three-candle FVG definition
 with fill-status tracking, order-block identification gated on real
-displacement, zone-not-single-tick support/resistance reporting, and
+displacement, zone-not-single-tick liquidity-pool reporting, and
 timeframe-appropriate significance — at the same rigor and precision Pro
 applies. VIP does not get a looser technical bar in exchange for more
 context; it gets the same technical bar plus more context.

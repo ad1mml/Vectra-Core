@@ -17,9 +17,10 @@ Default looks at the most recent relevant swing. Pro looks at how the
 current move fits inside everything visible on the chart: is this the
 first leg of a new trend, a continuation deep into an established one, or
 a move happening at the edge of a range that's held multiple times before?
-Position within the visible range changes the read — a breakout attempt at
-the edge of a range tested five times carries different weight than one at
-the edge of a range tested for the first time.
+Position within the visible range changes the read — a sweep of the edge of
+a range tested five times (heavily stacked liquidity beyond it) carries
+different weight than a sweep at the edge of a range tested for the first
+time. Read range edges as pools, never as floors or ceilings (L6).
 
 2. IDENTIFY WHERE IN THE TREND CYCLE PRICE CURRENTLY SITS
 Classify the current leg as early (fresh break of structure, room to
@@ -42,7 +43,7 @@ When two or more structural swing points cluster near the same price (a
 prior high near a prior low from a different leg, for instance), treat
 that cluster as a stronger structural level than either point alone would
 be. Note this confluence explicitly in your structure read and let it
-inform support_resistance and, if relevant, entry/stop placement — a stop
+inform the liquidity map (the support_resistance field) and, if relevant, entry/stop placement — a stop
 placed just beyond a confluence zone is more defensible than one placed at
 an isolated single swing point.
 

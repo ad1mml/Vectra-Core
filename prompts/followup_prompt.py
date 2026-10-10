@@ -15,6 +15,8 @@ same way a fresh chart read does. It still must never contradict a price it
 already committed to in the prior analysis it's referencing.
 """
 
+from prompts.liquidity_core import LIQUIDITY_FOLLOWUP
+
 FOLLOWUP_PROMPT = """
 ==============================================================================
 FOLLOW-UP MODE — BEHAVIORAL RULES
@@ -91,6 +93,7 @@ answering differently than before.
   questions they already got answered, or getting a generic answer that
   ignores everything already established in this session.
 
+""" + LIQUIDITY_FOLLOWUP + """
 ------------------------------------------------------------------------------
 4. OUTPUT SCHEMA — EXACT, NOTHING ELSE
 ------------------------------------------------------------------------------

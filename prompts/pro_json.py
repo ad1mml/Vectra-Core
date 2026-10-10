@@ -47,12 +47,17 @@ FIELD NOTES:
   Section 2.1), exactly as read.
 - market_structure: the pro_structure.py read — trend-cycle position,
   range-vs-trend distinction, multi-swing confluence where relevant.
-- support_resistance: the most relevant zones, described with the
-  precision from pro_technical.py point 4.
-- demand_supply: the most relevant zone(s), with the displacement quality
-  from pro_liquidity.py point 2 noted.
-- liquidity_sweep: the sweep-quality characterization from pro_liquidity.py
-  point 1, or an honest statement that none is currently visible.
+- support_resistance: LEGACY FIELD NAME — this field carries the LIQUIDITY
+  MAP (Liquidity Playbook L9). Buy-side pools above and sell-side pools
+  below, each with type, HTF/LTF tag, stacking and status
+  (unswept/swept/taken), described with the precision from
+  pro_technical.py point 4. Never write support/resistance language here.
+- demand_supply: the entry/reaction zone created by the displacement after
+  the sweep, with the displacement quality from pro_liquidity.py point 5
+  noted. Empty string if none is clean.
+- liquidity_sweep: the primary field — the sweep-quality characterization
+  from pro_liquidity.py point 4, the draw on liquidity that follows, or an
+  honest statement of which pool has not been swept yet.
 - fair_value_gaps: per pro_technical.py point 2's precise definition, with
   fill status noted.
 - change_of_character: whether a CHOCH is currently in play, per

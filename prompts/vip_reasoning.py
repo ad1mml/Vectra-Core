@@ -15,6 +15,12 @@ Apply Pro's synthesis discipline first: weigh technical evidence by
 relevance rather than stacking it, resolve conflicts explicitly, and run
 the "fresh eyes" check before finalizing a technical conclusion.
 
+THE TECHNICAL FOUNDATION IS LIQUIDITY-LED: the draw on liquidity, the sweep
+status, the confirmation and the next pool (Liquidity Playbook L1-L9) form the
+technical read. Structure, zones, FVGs, fibonacci and momentum confirm or deny
+it. A level-only thesis (bounce or break of a horizontal level) is not a
+technical read in this system and resolves to Wait (L6).
+
 THEN, LAYER IN CONTEXT — IN THIS ORDER OF PRECEDENCE:
 1. Technical read (structure + liquidity + order flow + zones) — the
    foundation, established first and on its own terms.

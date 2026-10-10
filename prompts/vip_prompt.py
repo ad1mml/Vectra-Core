@@ -12,6 +12,7 @@ add/reorder modules.
 
 ASSEMBLY ORDER (why this order):
 1. decision_spine.py        — universal rules, first, always.
+1b. liquidity_core.py       — the shared liquidity playbook (the METHOD).
 2. vip_identity.py           — who VIP is, scope, register.
 3. vip_rules.py               — behavioral do/don't list.
 4. vip_execution.py           — operational mode handling.
@@ -42,6 +43,7 @@ ASSEMBLY ORDER (why this order):
 """
 
 from prompts.decision_spine import DECISION_SPINE
+from prompts.liquidity_core import LIQUIDITY_CORE
 from prompts.vip_identity import VIP_IDENTITY
 from prompts.vip_rules import VIP_RULES
 from prompts.vip_execution import VIP_EXECUTION
@@ -70,6 +72,8 @@ from prompts.vip_json import VIP_JSON
 
 VIP_PROMPT = f"""
 {DECISION_SPINE}
+
+{LIQUIDITY_CORE}
 
 ==============================================================================
 VIP TIER — ASSEMBLED MODULES

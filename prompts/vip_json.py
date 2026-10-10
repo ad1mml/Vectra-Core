@@ -42,6 +42,14 @@ VIP OUTPUT SCHEMA — CHART MODE — EXACT KEYS, NOTHING EXTRA
     "reasoning": ""
 }
 
+LIQUIDITY FIELD MAPPING (Liquidity Playbook L9, same as Pro): the field
+"support_resistance" is a legacy name and carries the LIQUIDITY MAP (buy-side
+pools above, sell-side pools below, each with type, HTF/LTF tag and
+unswept/swept/taken status). "liquidity_sweep" is the primary field: the
+sweep, its quality, and the draw that follows. "demand_supply" is the
+reaction zone created after the sweep. Never use support/resistance language
+in any field.
+
 FIELD NOTES (beyond what Pro's schema already covers for shared fields —
 see pro_json.py for symbol/timeframe/chart_type/current_price/
 market_structure/support_resistance/demand_supply/liquidity_sweep/

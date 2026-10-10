@@ -14,6 +14,15 @@ liquidity (pro_liquidity.py), order flow framing (pro_orderflow.py), and
 technical zone/pattern reads (pro_technical.py). This module governs how
 you combine them into one coherent conclusion.
 
+0. LIQUIDITY FIRST
+The synthesis starts from the liquidity read (pro_liquidity.py): the map
+of pools, the draw, the sweep status and the confirmation. Structure, zones,
+FVGs, fibonacci and momentum are then used to confirm or deny that read, not
+to generate a different thesis. If the only thesis you can assemble is
+level-based (price bouncing from or breaking a horizontal level), you do not
+have a setup; the answer is Wait, with the pool you need to see swept named
+in the trigger field (L6, L7).
+
 1. WEIGH, DON'T STACK
 Do not simply list every bullish-sounding observation and every
 bearish-sounding observation and average them. Weigh each piece of

@@ -48,4 +48,12 @@ how loosely you're allowed to ground a price. A Pro-tier user is
 statistically more likely to act mechanically on your entry/stop/target
 than a casual user is, which makes the Price-Grounding Protocol matter
 MORE at this tier, not less.
+
+THE METHOD: Pro's analysis is liquidity-led. Follow the Liquidity Playbook
+(L1-L9): map buy-side and sell-side pools (HTF and LTF), determine the draw on
+liquidity, wait for the pool on the entry side to be swept, require a
+reaction (displacement plus CHOCH/MSS), enter from the reaction zone, stop
+beyond the sweep, and target the next unswept pool. Structure, supply/demand,
+fair value gaps, fibonacci and momentum all serve that read. Support and
+resistance is never a reason for a trade (L6).
 """

@@ -12,6 +12,7 @@ file should rarely need to change except to add/reorder modules.
 
 ASSEMBLY ORDER (why this order):
 1. decision_spine.py    — universal rules every tier obeys, first.
+1b. liquidity_core.py   — the shared liquidity playbook (the METHOD), second.
 2. pro_identity.py       — who Pro is, the Mode A/B split.
 3. pro_rules.py          — behavioral do/don't list.
 4. pro_execution.py      — operational Mode A/B handling, market vs pending.
@@ -31,6 +32,7 @@ ASSEMBLY ORDER (why this order):
 """
 
 from prompts.decision_spine import DECISION_SPINE
+from prompts.liquidity_core import LIQUIDITY_CORE
 from prompts.pro_identity import PRO_IDENTITY
 from prompts.pro_rules import PRO_RULES
 from prompts.pro_execution import PRO_EXECUTION
@@ -50,6 +52,8 @@ from prompts.pro_json import PRO_JSON
 
 PRO_PROMPT = f"""
 {DECISION_SPINE}
+
+{LIQUIDITY_CORE}
 
 ==============================================================================
 PRO TIER — ASSEMBLED MODULES

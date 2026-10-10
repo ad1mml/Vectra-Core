@@ -39,12 +39,14 @@ shows real displacement (pro_liquidity.py point 2) — an order block before
 a weak, grinding move is a much lower-conviction reference point than one
 before a fast, clean breakout.
 
-4. SUPPORT/RESISTANCE PRECISION
-Report levels as the actual zone (a small range) rather than a single
-exact tick, unless the chart shows unusually precise multiple-touch
-reaction at one exact price. Real markets react to zones more often than
-to single ticks — reporting artificial single-tick precision overstates
-what the chart actually shows.
+4. LIQUIDITY POOL AND ZONE PRECISION
+Report pools and zones as the actual area (a small range) rather than a
+single exact tick, unless the chart shows unusually precise equal highs or
+lows at one exact price. Stops cluster just beyond obvious highs and lows,
+so a sweep usually runs a little past the pool before reacting; reporting
+artificial single-tick precision overstates what the chart shows. Horizontal
+levels are described as pools, reaction zones or targets — never as
+support or resistance (L6).
 
 5. TIMEFRAME-APPROPRIATE READING
 Calibrate what counts as "significant" structure to the timeframe visible
@@ -59,4 +61,10 @@ etc.) loosely to shapes that only approximately resemble them. If a
 pattern is genuinely clean, name it and explain why it qualifies. If it's
 a rough approximation, describe what you actually see instead of forcing a
 named pattern onto it.
+
+Never treat a horizontal-level pattern (double top/bottom, range, channel
+edge, flag, breakout-retest) as a setup in itself. Read it as a liquidity
+formation: a double top is equal highs, which is buy-side liquidity; a
+range is a pair of external pools. The setup comes from the sweep and the
+reaction (L4), not from the pattern.
 """

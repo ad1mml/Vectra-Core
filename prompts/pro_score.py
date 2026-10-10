@@ -31,6 +31,20 @@ WEIGH THESE INPUTS (roughly, not as a rigid formula — use judgment):
   (pro_orderflow.py point 1): heavy reliance on an obvious level alone
   should cap the score lower even if other inputs look clean.
 
+LIQUIDITY-SETUP INPUTS (part of the confluence and liquidity weighing above):
+- Draw clarity: is there one clearly justified unswept pool price is being
+  drawn to, or do two pools compete?
+- Sweep quality: strong rejection from an external or stacked pool scores
+  higher than a grinding reclaim or an internal-pool sweep.
+- Confirmation: displacement plus CHOCH/MSS after the sweep is required for a
+  high score; a sweep without it caps the score.
+- HTF/LTF alignment: an LTF sweep opposite the HTF draw scores higher than
+  one against it.
+- Location: entry zone in discount (longs) / premium (shorts) supports the
+  score.
+- Clean target: an unswept opposing pool with room to travel supports the
+  score; a nearby already-swept or taken target does not.
+
 CALIBRATION GUIDANCE:
 - 80-100: multiple forms of independently-confirming evidence, clear
   invalidation, low reliance on obvious/telegraphed levels. Genuinely rare.
